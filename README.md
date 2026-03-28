@@ -92,5 +92,7 @@ Tested with `meta-llama/Llama-3.1-8B-Instruct` via Groq.
 |------|-------|
 | easy | 0.5000 |
 | medium | 0.6000 |
-| hard | 0.0000 |
-| average | 0.3667 |
+| hard | 1.0000 |
+| average | 0.7000 |
+
+> Hard task achieved a perfect score (1.0000) — the agent correctly identified all 5 cross-section compliance violations including the MIT/LLaMA-2 license incompatibility, the unfiltered web crawl + minor-facing use safety gap, the missing reasoning benchmarks behind a SOTA claim, the geographic bias gap in a globally-deployed model, and the incorrect CO₂ calculation. This confirms the environment successfully challenges even capable models with multi-hop reasoning.
