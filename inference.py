@@ -88,6 +88,8 @@ def run_task(env, task_id: str) -> float:
     # EnvClient.reset() returns a StepResult; extract the observation
     observation = getattr(reset_result, "observation", reset_result)
     history = []
+    # Accumulate conversation history so the model sees its prior actions
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()}")
@@ -104,20 +106,12 @@ def run_task(env, task_id: str) -> float:
             f"Section content:\n{observation.current_section_content[:600]}\n\n"
             f"What is your next action? Respond with JSON only."
         )
+        messages.append({"role": "user", "content": user_content})
 
         try:
             completion = client.chat.completions.create(
                 model=MODEL_NAME,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_content,
-                    },
-                ],
+                messages=messages,
                 temperature=TEMPERATURE,
                 max_tokens=MAX_TOKENS,
                 stream=False,
@@ -126,6 +120,9 @@ def run_task(env, task_id: str) -> float:
         except Exception as exc:
             print(f"Model request failed ({exc}). Using fallback action.")
             response_text = FALLBACK_ACTION
+
+        # Append assistant turn to history so subsequent steps have full context
+        messages.append({"role": "assistant", "content": response_text})
 
         action = parse_model_action(response_text)
         print(f"Step {step + 1}: model suggested -> {action.action_type}({action.target})")

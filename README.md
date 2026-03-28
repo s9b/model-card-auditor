@@ -86,11 +86,11 @@ python inference.py
 
 ## Baseline Scores
 
-Measured using `meta-llama/Llama-3.1-8B-Instruct` via HuggingFace Inference Router against the live Space:
+Tested with `meta-llama/Llama-3.1-8B-Instruct` via Groq.
 
-- easy:    0.0000
-- medium:  0.0000
-- hard:    0.0000
-- average: 0.0000
-
-Note: The baseline agent correctly navigates the environment (reads sections, receives rewards/penalties per step) but exhausts HF inference credits before completing full audits. Stronger agents that efficiently flag issues within the step budget will score significantly higher.
+| Task | Score |
+|------|-------|
+| easy | 0.5000 |
+| medium | 0.6000 |
+| hard | 0.0000 |
+| average | 0.3667 |
