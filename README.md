@@ -1,3 +1,14 @@
+---
+title: Model Card Compliance Auditor
+emoji: 🔍
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+tags:
+  - openenv
+---
+
 # Model Card Compliance Auditor
 
 ## Description & Motivation
