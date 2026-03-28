@@ -77,16 +77,20 @@ docker run -p 7860:7860 model-card-auditor
 ## Baseline Inference
 
 ```bash
-export API_BASE_URL="https://api-inference.huggingface.co/v1"
+export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
 export HF_TOKEN="hf_..."
-export ENV_URL="https://saazbhargav-model-card-auditor.hf.space"
+export ENV_URL="https://sazqt-model-card-auditor.hf.space"
 python inference.py
 ```
 
 ## Baseline Scores
 
-- easy:    0.XXXX
-- medium:  0.XXXX
-- hard:    0.XXXX
-- average: 0.XXXX
+Measured using `meta-llama/Llama-3.1-8B-Instruct` via HuggingFace Inference Router against the live Space:
+
+- easy:    0.0000
+- medium:  0.0000
+- hard:    0.0000
+- average: 0.0000
+
+Note: The baseline agent correctly navigates the environment (reads sections, receives rewards/penalties per step) but exhausts HF inference credits before completing full audits. Stronger agents that efficiently flag issues within the step budget will score significantly higher.

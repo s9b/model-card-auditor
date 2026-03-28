@@ -73,6 +73,10 @@ def parse_model_action(response_text: str) -> ModelCardAction:
                 text = text[4:]
             text = text.strip()
         data = json.loads(text)
+        # Coerce null values to valid defaults so Pydantic doesn't reject the action
+        data["reason"]   = data.get("reason")   or ""
+        data["evidence"] = data.get("evidence") or ""
+        data["severity"] = data.get("severity") or "medium"
         return ModelCardAction(**data)
     except Exception:
         return ModelCardAction(**json.loads(FALLBACK_ACTION))
@@ -80,7 +84,9 @@ def parse_model_action(response_text: str) -> ModelCardAction:
 
 def run_task(env, task_id: str) -> float:
     """Run one complete episode. Returns the final compliance score."""
-    observation = env.reset(task_id=task_id)
+    reset_result = env.reset(task_id=task_id)
+    # EnvClient.reset() returns a StepResult; extract the observation
+    observation = getattr(reset_result, "observation", reset_result)
     history = []
 
     print(f"\n{'='*60}")
@@ -105,7 +111,7 @@ def run_task(env, task_id: str) -> float:
                 messages=[
                     {
                         "role": "system",
-                        "content": [{"type": "text", "text": SYSTEM_PROMPT}],
+                        "content": SYSTEM_PROMPT,
                     },
                     {
                         "role": "user",
