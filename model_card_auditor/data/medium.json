@@ -1,0 +1,19 @@
+{
+  "id": "medium_v1",
+  "title": "MultiLingualNLI-v2",
+  "sections": {
+    "Overview": "MultiLingualNLI-v2 is a natural language inference model supporting 30+ languages for entailment, contradiction, and neutral classification.",
+    "Training Data": "Trained on multilingual web text collected from various online sources.",
+    "Intended Use": "Designed for multilingual NLI tasks across enterprise applications. Supports English, French, Spanish, German and more.",
+    "Evaluation Results": "Achieves 89.3% accuracy on English SNLI benchmark. Strong performance across test sets.",
+    "Bias and Limitations": "This model may reflect biases present in the training data. Users should be aware of potential issues.",
+    "License": "Apache 2.0"
+  },
+  "ground_truth": [
+    {"field": "Training Data",        "expected_action": "flag_inadequate", "weight": 0.20, "key_evidence": "multilingual web text"},
+    {"field": "Bias and Limitations", "expected_action": "flag_inadequate", "weight": 0.20, "key_evidence": "may reflect biases"},
+    {"field": "Evaluation Results",   "expected_action": "flag_inadequate", "weight": 0.20, "key_evidence": "English SNLI benchmark"},
+    {"field": "Environmental Impact", "expected_action": "flag_missing",    "weight": 0.20, "key_evidence": ""},
+    {"field": "Out-of-Scope Uses",    "expected_action": "flag_missing",    "weight": 0.20, "key_evidence": ""}
+  ]
+}

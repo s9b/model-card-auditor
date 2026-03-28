@@ -1,0 +1,17 @@
+name: model-card-auditor
+version: "1.0.0"
+description: >
+  An AI governance environment where agents audit HuggingFace model cards
+  for compliance with responsible AI documentation standards.
+tags:
+  - openenv
+tasks:
+  - id: easy
+    description: Identify missing required fields in a model card
+    difficulty: easy
+  - id: medium
+    description: Identify both missing and inadequate sections
+    difficulty: medium
+  - id: hard
+    description: Detect subtle cross-section compliance violations
+    difficulty: hard

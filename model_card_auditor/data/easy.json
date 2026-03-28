@@ -1,0 +1,14 @@
+{
+  "id": "easy_v1",
+  "title": "BERTweet-Sentiment-Mini",
+  "sections": {
+    "Overview": "BERTweet-Sentiment-Mini is a lightweight binary sentiment classifier trained for positive/negative classification.",
+    "Installation": "pip install transformers\n\nfrom transformers import pipeline\nclassifier = pipeline('text-classification', model='bertweet-sentiment-mini')\nresult = classifier('I love this!')\nprint(result)"
+  },
+  "ground_truth": [
+    {"field": "Training Data",      "expected_action": "flag_missing", "weight": 0.25, "key_evidence": ""},
+    {"field": "Intended Use",       "expected_action": "flag_missing", "weight": 0.25, "key_evidence": ""},
+    {"field": "Evaluation Results", "expected_action": "flag_missing", "weight": 0.25, "key_evidence": ""},
+    {"field": "License",            "expected_action": "flag_missing", "weight": 0.25, "key_evidence": ""}
+  ]
+}

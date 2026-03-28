@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-card-auditor"
+version = "1.0.0"
+description = "OpenEnv environment for AI governance model card auditing"
+requires-python = ">=3.11"
+dependencies = [
+    "openenv-core>=0.2.1",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "openai>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["model_card_auditor*", "server*"]

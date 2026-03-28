@@ -1,0 +1,52 @@
+{
+  "id": "hard_v1",
+  "title": "OpenGen-7B",
+  "sections": {
+    "Overview": "OpenGen-7B is a general-purpose text generation model achieving state-of-the-art performance on complex reasoning tasks. Suitable for a wide range of downstream NLP applications.",
+    "Training Data": "Trained on The Pile, a diverse 825GB open-source dataset including academic papers, GitHub code, and unfiltered web crawl data from Common Crawl.",
+    "Training Procedure": "Fine-tuned from meta-llama/Llama-2-7b using LoRA adapters on 8x A100 GPUs for 72 GPU-hours. Learning rate 2e-4, batch size 32.",
+    "Intended Use": "Suitable for educational platforms including those serving minors. Designed for global deployment across all regions and cultures. Recommended for reasoning, summarization, and question answering.",
+    "Evaluation Results": "Perplexity on WikiText-103: 12.4. BLEU-4 on WMT14 En-De: 28.7. Evaluated on standard language modelling benchmarks.",
+    "Bias and Limitations": "We evaluated OpenGen-7B for gender bias using WinoBias and racial bias using StereoSet. Results show near-parity with baseline models. We recommend users apply additional safety filters for production use.",
+    "Environmental Impact": "Training compute: 72 GPU-hours on NVIDIA A100 (400W TDP). Energy consumption: 72 × 400W × 1h = 28.8 kWh. CO2 equivalent: 72 × 400 × 0.233 = 3.2 kgCO2 (using US average grid intensity of 0.233 kgCO2/kWh).",
+    "License": "MIT License. Free to use for commercial and non-commercial purposes.",
+    "Out-of-Scope Uses": "Not intended for high-stakes autonomous decision-making without human oversight. Should not be used for generating legal or medical advice without expert review."
+  },
+  "ground_truth": [
+    {
+      "field": "License",
+      "expected_action": "flag_inadequate",
+      "weight": 0.25,
+      "key_evidence": "Llama-2-7b",
+      "description": "MIT License claim is incompatible with LLaMA 2 base model which uses Meta's custom Community License"
+    },
+    {
+      "field": "Training Data",
+      "expected_action": "flag_inadequate",
+      "weight": 0.25,
+      "key_evidence": "unfiltered web crawl",
+      "description": "Unfiltered web crawl data combined with minor-facing intended use is a critical content safety gap"
+    },
+    {
+      "field": "Bias and Limitations",
+      "expected_action": "flag_inadequate",
+      "weight": 0.20,
+      "key_evidence": "global deployment",
+      "description": "Only gender and racial bias evaluated, but model claims global deployment across all regions and cultures"
+    },
+    {
+      "field": "Evaluation Results",
+      "expected_action": "flag_inadequate",
+      "weight": 0.20,
+      "key_evidence": "state-of-the-art performance on complex reasoning",
+      "description": "Overview claims reasoning SOTA but evaluation only shows perplexity and BLEU — no reasoning benchmarks"
+    },
+    {
+      "field": "Environmental Impact",
+      "expected_action": "flag_inadequate",
+      "weight": 0.10,
+      "key_evidence": "3.2 kgCO2",
+      "description": "CO2 calculation is mathematically wrong: 72 × 0.4kW × 0.233 = 6.71 kgCO2, not 3.2 kgCO2"
+    }
+  ]
+}
