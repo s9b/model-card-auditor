@@ -22,7 +22,7 @@ client = OpenAI(api_key=api_key, base_url=API_BASE_URL)
 
 TEMPERATURE  = 0.0
 MAX_TOKENS   = 512
-MAX_STEPS    = 25
+MAX_STEPS    = 35
 
 FALLBACK_ACTION = json.dumps({
     "action_type": "submit_audit",
@@ -60,7 +60,8 @@ Strategy:
 2. Check for missing required sections
 3. Compare related sections for cross-section inconsistencies
 4. Flag issues found
-5. Submit when confident"""
+5. Submit when confident
+For hard tasks: always use compare_sections to cross-reference License vs Training Procedure, Training Data vs Intended Use, Overview vs Evaluation Results, and Bias and Limitations vs Intended Use before flagging."""
 
 
 def parse_model_action(response_text: str) -> ModelCardAction:
@@ -114,6 +115,7 @@ def run_task(env, task_id: str) -> float:
                 messages=messages,
                 temperature=TEMPERATURE,
                 max_tokens=MAX_TOKENS,
+                seed=42,
                 stream=False,
             )
             response_text = completion.choices[0].message.content or ""

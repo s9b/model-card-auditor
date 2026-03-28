@@ -86,13 +86,13 @@ python inference.py
 
 ## Baseline Scores
 
-Tested with `meta-llama/Llama-3.1-8B-Instruct` via Groq.
+Tested with `llama-3.1-8b-instant` via Groq (temperature=0, seed=42).
 
 | Task | Score |
 |------|-------|
-| easy | 0.5000 |
+| easy | 1.0000 |
 | medium | 0.6000 |
-| hard | 1.0000 |
-| average | 0.7000 |
+| hard | 0.2000 |
+| average | 0.6000 |
 
-> Hard task achieved a perfect score (1.0000) — the agent correctly identified all 5 cross-section compliance violations including the MIT/LLaMA-2 license incompatibility, the unfiltered web crawl + minor-facing use safety gap, the missing reasoning benchmarks behind a SOTA claim, the geographic bias gap in a globally-deployed model, and the incorrect CO₂ calculation. This confirms the environment successfully challenges even capable models with multi-hop reasoning.
+> Easy task achieved a perfect score (1.0000) — the agent correctly identified all 4 missing required fields (Training Data, Intended Use, Evaluation Results, License). Hard task scored 0.2000 — the agent found the MIT/LLaMA-2 license incompatibility but missed the remaining 4 cross-section violations, confirming the hard task genuinely challenges models with multi-hop reasoning that requires reading and comparing multiple sections.
