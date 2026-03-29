@@ -24,15 +24,19 @@ TEMPERATURE  = 0.0
 MAX_TOKENS   = 512
 MAX_STEPS    = 35
 
-REQUIRED_SECTIONS = [
-    "Training Data",
-    "Intended Use",
-    "Evaluation Results",
-    "License",
-    "Environmental Impact",
-    "Bias and Limitations",
-    "Out-of-Scope Uses",
-]
+REQUIRED_SECTIONS = {
+    "easy": [
+        "Training Data",
+        "Intended Use",
+        "Evaluation Results",
+        "License",
+    ],
+    "medium": [
+        "Environmental Impact",
+        "Out-of-Scope Uses",
+    ],
+    "hard": [],  # all 9 sections present — pre-flight does nothing for hard
+}
 
 FALLBACK_ACTION = json.dumps({
     "action_type": "submit_audit",
@@ -72,6 +76,41 @@ Strategy:
 4. Flag cross-section inconsistencies you find
 5. Submit when all sections reviewed"""
 
+HARD_SYSTEM_PROMPT = """You are an AI governance auditor performing a hard-level model card audit.
+
+This model card LOOKS complete — all sections are present. Your job is to find SUBTLE
+CROSS-SECTION INCONSISTENCIES that require reading multiple sections together.
+
+There are exactly 5 violations hidden in this model card. All are flag_inadequate.
+To find them, you MUST use compare_sections on these specific pairs:
+  1. compare_sections("License", "Training Procedure")
+     → Look for: is the stated license compatible with the base model's actual license?
+  2. compare_sections("Training Data", "Intended Use")
+     → Look for: does the training data pose safety risks for the stated deployment audience?
+  3. compare_sections("Evaluation Results", "Overview")
+     → Look for: do the evaluation metrics actually prove the capability claims?
+  4. compare_sections("Bias and Limitations", "Intended Use")
+     → Look for: does the bias testing coverage match the deployment scope claimed?
+  5. Read "Environmental Impact" alone
+     → Look for: verify the CO₂ figure by checking: GPU_hours × power_kW × carbon_intensity
+        (a correct calculation typically yields a number different from what is stated)
+
+Strategy:
+  Step 1: Read all sections to build context
+  Step 2: compare_sections for each of the 4 pairs above
+  Step 3: flag_inadequate for each inconsistency found — include exact evidence quotes
+  Step 4: submit_audit when all sections reviewed
+
+At every step, respond with ONLY a valid JSON object (no markdown, no explanation):
+{
+    "action_type": "read_section|compare_sections|flag_inadequate|flag_compliant|submit_audit",
+    "target": "<section name, or 'final' for submit>",
+    "secondary_target": "<second section for compare_sections, else null>",
+    "reason": "<specific inconsistency — be precise>",
+    "severity": "low|medium|high|critical",
+    "evidence": "<exact quote from the model card that proves the violation>"
+}"""
+
 
 def parse_model_action(response_text: str) -> ModelCardAction:
     """Parse the model's text response into a ModelCardAction. Returns fallback on failure."""
@@ -99,7 +138,8 @@ def run_task(env, task_id: str) -> float:
     observation = getattr(reset_result, "observation", reset_result)
     history = []
     # Accumulate conversation history so the model sees its prior actions
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system_prompt = HARD_SYSTEM_PROMPT if task_id == "hard" else SYSTEM_PROMPT
+    messages = [{"role": "system", "content": system_prompt}]
 
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()}")
@@ -107,7 +147,7 @@ def run_task(env, task_id: str) -> float:
 
     # ── Pre-flight: flag required sections absent from this model card ─────────
     available_lower = {s.lower().strip() for s in observation.sections_available}
-    for required_section in REQUIRED_SECTIONS:
+    for required_section in REQUIRED_SECTIONS.get(task_id, []):
         if required_section.lower().strip() not in available_lower:
             preflight_action = ModelCardAction(
                 action_type="flag_missing",
