@@ -79,16 +79,20 @@ Hard task violations include: MIT license incompatible with LLaMA-2 base model, 
 
 ## Baseline Scores
 
-Tested with `llama-3.1-8b-instant` via Groq (temperature=0, seed=42).
+Tested via Groq (temperature=0, seed=42).
 
-| Task | Score | Notes |
-|------|-------|-------|
-| easy | **1.0000** | Perfect — all 4 missing sections found |
-| medium | **0.6000** | 3/5 found; misses the two `flag_missing` issues |
-| hard | **0.2000** | Finds License incompatibility; misses 4 cross-section violations |
-| **average** | **0.6000** | |
+| Model | Task | Score | Notes |
+|-------|------|-------|-------|
+| `llama-3.3-70b-versatile` | easy | **1.0000** | Perfect — all 4 missing sections found |
+| `llama-3.3-70b-versatile` | medium | **1.0000** | Perfect — 2 missing (pre-flight) + 3 inadequate (LLM) |
+| `llama-3.3-70b-versatile` | hard | **0.2000** | Finds CO₂ error; cross-section flags use compound targets |
+| `llama-3.3-70b-versatile` | **average** | **0.7333** | |
+| `llama-3.1-8b-instant` *(8B baseline)* | easy | 1.0000 | Perfect |
+| `llama-3.1-8b-instant` *(8B baseline)* | medium | 0.6000 | Misses 2 absent sections without pre-flight |
+| `llama-3.1-8b-instant` *(8B baseline)* | hard | 0.2000 | Finds License violation only |
+| `llama-3.1-8b-instant` *(8B baseline)* | **average** | **0.6000** | |
 
-Medium 0.6 reflects 8B model limitation on detecting absent sections, not an environment bug. The pre-flight fix in `inference.py` addresses this programmatically.
+The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM — lifting medium from 0.6 (8B) to 1.0 (70B). The hard task requires cross-section reasoning that benefits from stronger models; the 70B model identifies the correct violations but uses compound section names as targets, which the grader scores as false positives.
 
 ## Setup
 
