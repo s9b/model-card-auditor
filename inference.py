@@ -5,7 +5,9 @@ MUST be placed in the ROOT directory of the project.
 Uses OpenAI Client library for all LLM calls.
 """
 import os
+import re
 import json
+import time
 from openai import OpenAI
 from model_card_auditor import ModelCardAuditClient, ModelCardAction
 
@@ -81,6 +83,18 @@ HARD_SYSTEM_PROMPT = """You are an AI governance auditor performing a hard-level
 This model card LOOKS complete — all sections are present. Your job is to find SUBTLE
 CROSS-SECTION INCONSISTENCIES that require reading multiple sections together.
 
+CRITICAL RULES FOR TARGET FIELD:
+1. "target" must be EXACTLY ONE section name — never combine two sections.
+   WRONG: "target": "License and Training Data"
+   RIGHT: make TWO separate JSON responses, one with "target": "License",
+          then another with "target": "Training Data"
+2. Use the EXACT section name as it appears in sections_available.
+   The valid section names are listed in every observation you receive.
+   Copy the name character-for-character — do not paraphrase or rename.
+3. For each compare_sections result that reveals an inconsistency,
+   flag the section that CONTAINS the false or misleading claim —
+   that is the target for flag_inadequate.
+
 There are exactly 5 violations hidden in this model card. All are flag_inadequate.
 To find them, you MUST use compare_sections on these specific pairs:
   1. compare_sections("License", "Training Procedure")
@@ -99,6 +113,9 @@ Strategy:
   Step 1: Read all sections to build context
   Step 2: compare_sections for each of the 4 pairs above
   Step 3: flag_inadequate for each inconsistency found — include exact evidence quotes
+  Step 3b. For each violation found via compare_sections, submit ONE flag_inadequate
+      per section — not a combined action. If a comparison reveals issues in
+      both sections, make two separate flag_inadequate calls.
   Step 4: submit_audit when all sections reviewed
 
 At every step, respond with ONLY a valid JSON object (no markdown, no explanation):
@@ -191,18 +208,32 @@ def run_task(env, task_id: str) -> float:
         )
         messages.append({"role": "user", "content": user_content})
 
-        try:
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-                seed=42,
-                stream=False,
-            )
-            response_text = completion.choices[0].message.content or ""
-        except Exception as exc:
-            print(f"Model request failed ({exc}). Using fallback action.")
+        response_text = None
+        for attempt in range(4):  # up to 3 retries
+            try:
+                completion = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=messages,
+                    temperature=TEMPERATURE,
+                    max_tokens=MAX_TOKENS,
+                    seed=42,
+                    stream=False,
+                )
+                response_text = completion.choices[0].message.content or ""
+                break  # success — exit retry loop
+            except Exception as exc:
+                error_str = str(exc)
+                if "429" in error_str or "rate_limit" in error_str.lower():
+                    wait = 20 * (attempt + 1)  # 20s, 40s, 60s
+                    print(f"Rate limit hit (attempt {attempt+1}/3). Waiting {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"Model request failed ({exc}). Using fallback action.")
+                    response_text = FALLBACK_ACTION
+                    break
+
+        if response_text is None:
+            print("All retries exhausted. Using fallback action.")
             response_text = FALLBACK_ACTION
 
         # Append assistant turn to history so subsequent steps have full context
@@ -210,6 +241,53 @@ def run_task(env, task_id: str) -> float:
 
         action = parse_model_action(response_text)
         print(f"Step {step + 1}: model suggested -> {action.action_type}({action.target})")
+
+        # Safety net: split compound targets like "License and Training Data"
+        # Only applies to flag actions, not read/compare/submit
+        if action.action_type in ("flag_missing", "flag_inadequate", "flag_compliant"):
+            parts = re.split(r'\s+and\s+|\s*,\s*', action.target, flags=re.IGNORECASE)
+            parts = [p.strip() for p in parts if p.strip()]
+            known_sections_lower = {s.lower() for s in observation.sections_available}
+            valid_parts = [p for p in parts if p.lower() in known_sections_lower]
+            if len(valid_parts) > 1:
+                split_obs = observation
+                split_result = None
+                for part in valid_parts:
+                    split_action = ModelCardAction(
+                        action_type=action.action_type,
+                        target=part,
+                        secondary_target=action.secondary_target,
+                        reason=action.reason,
+                        severity=action.severity,
+                        evidence=action.evidence,
+                    )
+                    split_result = env.step(split_action)
+                    split_obs = split_result.observation
+                    split_reward = split_result.reward or 0.0
+                    history.append(
+                        f"Step {step+1}(split): {action.action_type}({part}) "
+                        f"-> reward {split_reward:+.2f}"
+                    )
+                    print(f"  [Split] {action.action_type}({part}) -> reward {split_reward:+.2f}")
+                    if split_result.done:
+                        return split_obs.partial_score
+                observation = split_obs
+                messages.append({"role": "assistant", "content": response_text})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"Sections available: {observation.sections_available}\n"
+                        f"Sections reviewed:  {observation.sections_reviewed}\n"
+                        f"Findings so far:    {observation.findings_count}\n"
+                        f"Partial score:      {observation.partial_score:.3f}\n"
+                        f"Steps remaining:    {observation.steps_remaining}\n"
+                        f"Last feedback:      {observation.last_action_feedback}\n"
+                        f"Section content:\n{observation.current_section_content[:600]}\n\n"
+                        f"What is your next action? Respond with JSON only."
+                    )
+                })
+                time.sleep(1)
+                continue  # skip the normal env.step below
 
         result = env.step(action)
         observation = result.observation
@@ -228,6 +306,7 @@ def run_task(env, task_id: str) -> float:
         if result.done:
             print("Episode complete.")
             break
+        time.sleep(1)
     else:
         print(f"Reached max steps ({MAX_STEPS}).")
 
