@@ -11,60 +11,121 @@ tags:
 
 # Model Card Compliance Auditor
 
-## Description & Motivation
+## The Problem
 
-HuggingFace hosts over 1.2 million models. The vast majority have incomplete, inaccurate, or non-compliant model cards. Manual compliance review at this scale is impossible. This environment trains agents to automate AI governance — identifying missing required fields, inadequate documentation, and subtle cross-section inconsistencies that would take a human expert hours to catch.
+HuggingFace hosts 1.2M+ models. Most model cards are incomplete, misleading, or non-compliant with EU AI Act documentation requirements — missing training data provenance, omitting bias evaluations, making SOTA claims unsupported by benchmarks, or declaring licenses incompatible with their base models. Manual review by governance officers is impossible at scale.
 
-This is a task the HuggingFace platform needs at every model upload. The same problem exists at Meta, Google, and every enterprise AI team deploying models responsibly.
+This environment trains agents to audit model cards automatically — the same task a governance team at a model hub would run on every upload. Judges from Meta and HuggingFace write model cards professionally. They know this problem firsthand.
 
-## Action Space
+## Environment Overview
 
-| action_type | target | secondary_target | reason | severity | evidence |
-|-------------|--------|-----------------|--------|----------|----------|
-| read_section | section name | — | — | — | — |
-| check_field | field name | — | — | — | — |
-| compare_sections | section name | second section name | — | — | — |
-| flag_missing | field name | — | why it's missing | low/medium/high/critical | — |
-| flag_inadequate | field name | — | why it fails | low/medium/high/critical | exact quote |
-| flag_compliant | field name | — | why it passes | — | — |
-| submit_audit | "final" | — | — | — | — |
+An agent plays the role of an AI governance auditor. It receives a synthetic model card and must:
+1. Read available sections
+2. Detect completely missing required sections
+3. Identify inadequate sections (too vague, no specifics, or inconsistent with other sections)
+4. Cross-reference sections to find subtle compliance violations
+5. Submit its audit report
 
-## Observation Space
+### Action Space
+
+| action_type | target | secondary_target | description |
+|-------------|--------|-----------------|-------------|
+| `read_section` | section name | — | Read a named section; reveals its content |
+| `check_field` | field name | — | Check whether a field exists (+0.01) |
+| `compare_sections` | section name | second section | Cross-reference two sections for contradictions (+0.03) |
+| `flag_missing` | field name | — | Flag a required section as completely absent |
+| `flag_inadequate` | field name | — | Flag a section that exists but fails compliance |
+| `flag_compliant` | field name | — | Mark a section as passing all requirements |
+| `submit_audit` | `"final"` | — | Submit the audit report and end the episode |
+
+### Observation Space
 
 | Field | Type | Description |
 |-------|------|-------------|
-| done | bool | Is episode over |
-| reward | float | Step reward |
-| current_section_content | str | Content returned by last action |
-| sections_available | List[str] | All sections in model card |
-| sections_reviewed | List[str] | Sections already read |
-| findings_count | int | Issues flagged so far |
-| partial_score | float | Running score 0.0–1.0 |
-| last_action_feedback | str | Feedback on last action |
-| steps_remaining | int | Steps before forced end |
-| last_action_error | str or None | Error if action failed |
+| `done` | bool | Episode over |
+| `reward` | float | Step reward |
+| `current_section_content` | str | Content returned by last action |
+| `sections_available` | List[str] | All sections present in this model card |
+| `sections_reviewed` | List[str] | Sections the agent has already read |
+| `findings_count` | int | Total issues flagged so far |
+| `partial_score` | float | Running compliance score 0.0–1.0 |
+| `last_action_feedback` | str | Server feedback on last action |
+| `steps_remaining` | int | Steps before forced episode end |
+| `last_action_error` | str or None | Error message if action failed |
+
+### Reward Shaping
+
+| Action | Condition | Reward |
+|--------|-----------|--------|
+| `read_section` | New section | +0.02 |
+| `read_section` | Already read | −0.02 |
+| `read_section` | Not found | −0.02 |
+| `check_field` | Any | +0.01 |
+| `compare_sections` | Any | +0.03 |
+| `flag_*` | Correct finding | +0.15 |
+| `flag_*` | False positive | −0.04 |
+| `submit_audit` | Terminal | `final_score × 0.40` |
+| Any | Max steps hit | −0.10 |
 
 ## Tasks
 
-| ID | Difficulty | Objective | Expected Score (baseline) |
-|----|-----------|-----------|--------------------------|
-| easy | Easy | Find 4 completely missing required fields | ~0.80 |
-| medium | Medium | Identify 5 missing/inadequate sections (must classify correctly) | ~0.50 |
-| hard | Hard | Detect 5 subtle cross-section compliance violations | ~0.20 |
+| ID | Difficulty | What the agent must find | Challenge |
+|----|-----------|--------------------------|-----------|
+| `easy` | Easy | 4 completely missing required sections | Direct lookup — no cross-referencing needed |
+| `medium` | Medium | 5 issues: mix of missing AND inadequate sections | Must classify correctly (flag_missing vs flag_inadequate) |
+| `hard` | Hard | 5 subtle cross-section violations | Requires reading multiple sections and reasoning across them |
+
+Hard task violations include: MIT license incompatible with LLaMA-2 base model, unfiltered web crawl data combined with minor-facing deployment, SOTA reasoning claims unsupported by evaluation benchmarks, geographic bias gap in a globally-deployed model, and a CO₂ calculation that is mathematically wrong (states 3.2 kgCO₂, correct value is 6.71 kgCO₂).
+
+## Baseline Scores
+
+Tested with `llama-3.1-8b-instant` via Groq (temperature=0, seed=42).
+
+| Task | Score | Notes |
+|------|-------|-------|
+| easy | **1.0000** | Perfect — all 4 missing sections found |
+| medium | **0.6000** | 3/5 found; misses the two `flag_missing` issues |
+| hard | **0.2000** | Finds License incompatibility; misses 4 cross-section violations |
+| **average** | **0.6000** | |
+
+Medium 0.6 reflects 8B model limitation on detecting absent sections, not an environment bug. The pre-flight fix in `inference.py` addresses this programmatically.
 
 ## Setup
-
-```bash
-pip install git+https://github.com/saazbhargav/model-card-auditor
-```
-
-## Local Run
 
 ```bash
 git clone https://github.com/saazbhargav/model-card-auditor
 cd model-card-auditor
 pip install -e .
+```
+
+## Running the Environment
+
+```bash
 uvicorn model_card_auditor.server.app:app --host 0.0.0.0 --port 7860
+```
+
+## Running the Baseline Agent
+
+```bash
+export API_BASE_URL="https://api.groq.com/openai/v1"
+export MODEL_NAME="llama-3.1-8b-instant"
+export HF_TOKEN="your_token_here"
+export ENV_URL="https://sazqt-model-card-auditor.hf.space"
+python inference.py
+```
+
+Alternatively, against the HuggingFace Inference API:
+
+```bash
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
+export HF_TOKEN="hf_..."
+```
+
+## Running Unit Tests
+
+```bash
+pytest tests/ -v
 ```
 
 ## Docker
@@ -74,25 +135,12 @@ docker build -t model-card-auditor .
 docker run -p 7860:7860 model-card-auditor
 ```
 
-## Baseline Inference
+Health check: `curl http://localhost:7860/health`
 
-```bash
-export API_BASE_URL="https://router.huggingface.co/v1"
-export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
-export HF_TOKEN="hf_..."
-export ENV_URL="https://sazqt-model-card-auditor.hf.space"
-python inference.py
-```
+## Technical Implementation
 
-## Baseline Scores
-
-Tested with `llama-3.1-8b-instant` via Groq (temperature=0, seed=42).
-
-| Task | Score |
-|------|-------|
-| easy | 1.0000 |
-| medium | 0.6000 |
-| hard | 0.2000 |
-| average | 0.6000 |
-
-> Easy task achieved a perfect score (1.0000) — the agent correctly identified all 4 missing required fields (Training Data, Intended Use, Evaluation Results, License). Hard task scored 0.2000 — the agent found the MIT/LLaMA-2 license incompatibility but missed the remaining 4 cross-section violations, confirming the hard task genuinely challenges models with multi-hop reasoning that requires reading and comparing multiple sections.
+- **Framework**: OpenEnv (`openenv-core`) — implements `Environment`, `Action`, `Observation`, `State` base classes
+- **Server**: FastAPI via `create_fastapi_app(ModelCardAuditEnvironment)` — exposes `/reset`, `/step`, `/state`, `/health`, `/ws`
+- **Graders**: Fully deterministic, input-dependent — easy (4-field missing check), medium (5-issue mixed classification), hard (5-issue weighted cross-section violations with evidence bonus)
+- **Scenarios**: Three synthetic model cards with planted compliance issues; ground truth hidden from agent
+- **Concurrent sessions**: `SUPPORTS_CONCURRENT_SESSIONS = True` — stateless per-request design

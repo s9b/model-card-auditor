@@ -24,6 +24,16 @@ TEMPERATURE  = 0.0
 MAX_TOKENS   = 512
 MAX_STEPS    = 35
 
+REQUIRED_SECTIONS = [
+    "Training Data",
+    "Intended Use",
+    "Evaluation Results",
+    "License",
+    "Environmental Impact",
+    "Bias and Limitations",
+    "Out-of-Scope Uses",
+]
+
 FALLBACK_ACTION = json.dumps({
     "action_type": "submit_audit",
     "target": "final",
@@ -34,34 +44,33 @@ FALLBACK_ACTION = json.dumps({
 
 SYSTEM_PROMPT = """You are an AI governance auditor reviewing model cards for compliance.
 
-A model card must contain these required sections:
-- Training Data (what data, sources, size, languages)
-- Intended Use (what the model is for, who uses it)
-- Evaluation Results (metrics, benchmarks, datasets)
-- License (what license governs the model)
-- Environmental Impact (CO2, compute used)
-- Bias and Limitations (what biases were tested and found)
-- Out-of-Scope Uses (what the model should NOT be used for)
-
-Your job: read each section, identify compliance issues, flag them, then submit your audit.
+IMPORTANT: Missing required sections have already been detected and flagged automatically.
+Your job is to read the sections that DO exist and find:
+- flag_inadequate: section exists but content is too vague, lacks specifics, or is inconsistent with other sections
+- compare_sections: cross-reference two sections for logical contradictions
+- flag_compliant: confirm a section that fully meets requirements
+- submit_audit: when you have reviewed all available sections
 
 At every step, respond with ONLY a JSON object (no markdown, no explanation):
 {
-  "action_type": "read_section|check_field|compare_sections|flag_missing|flag_inadequate|flag_compliant|submit_audit",
-  "target": "<section or field name, or 'final' for submit>",
-  "secondary_target": "<second section name for compare_sections, else null>",
-  "reason": "<why you are flagging this issue>",
-  "severity": "low|medium|high|critical",
-  "evidence": "<exact quote from the model card that supports your finding>"
+    "action_type": "read_section|check_field|compare_sections|flag_inadequate|flag_compliant|submit_audit",
+    "target": "<section name, or 'final' for submit>",
+    "secondary_target": "<second section for compare_sections, else null>",
+    "reason": "<why you are flagging this issue>",
+    "severity": "low|medium|high|critical",
+    "evidence": "<exact quote from the model card supporting your finding>"
 }
 
 Strategy:
-1. Read all available sections first
-2. Check for missing required sections
-3. Compare related sections for cross-section inconsistencies
-4. Flag issues found
-5. Submit when confident
-For hard tasks: always use compare_sections to cross-reference License vs Training Procedure, Training Data vs Intended Use, Overview vs Evaluation Results, and Bias and Limitations vs Intended Use before flagging."""
+1. Read every available section
+2. Flag any section whose content is vague (no specifics, no numbers, no sources)
+3. Use compare_sections to cross-reference:
+   - License vs Training Data (license compatibility with base model)
+   - Training Data vs Intended Use (safety gaps — e.g. unfiltered data + serving minors)
+   - Evaluation Results vs Overview claims (does evidence support stated capabilities?)
+   - Bias and Limitations vs Intended Use (is bias coverage adequate for deployment scope?)
+4. Flag cross-section inconsistencies you find
+5. Submit when all sections reviewed"""
 
 
 def parse_model_action(response_text: str) -> ModelCardAction:
@@ -95,6 +104,39 @@ def run_task(env, task_id: str) -> float:
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()}")
     print(f"{'='*60}")
+
+    # ── Pre-flight: flag required sections absent from this model card ─────────
+    available_lower = {s.lower().strip() for s in observation.sections_available}
+    for required_section in REQUIRED_SECTIONS:
+        if required_section.lower().strip() not in available_lower:
+            preflight_action = ModelCardAction(
+                action_type="flag_missing",
+                target=required_section,
+                reason=f"Required section '{required_section}' is completely absent from the model card.",
+                severity="high",
+                evidence="",
+            )
+            result = env.step(preflight_action)
+            observation = result.observation
+            reward = result.reward or 0.0
+            print(f"Pre-flight: flag_missing('{required_section}') -> reward {reward:+.2f}")
+            messages.append({
+                "role": "user",
+                "content": f"[Auto-flagged missing section: {required_section}]"
+            })
+            messages.append({
+                "role": "assistant",
+                "content": json.dumps({
+                    "action_type": "flag_missing",
+                    "target": required_section,
+                    "reason": f"Section '{required_section}' is absent.",
+                    "severity": "high",
+                    "evidence": ""
+                })
+            })
+            if result.done:
+                return observation.partial_score
+    # ── End pre-flight ─────────────────────────────────────────────────────────
 
     for step in range(MAX_STEPS):
         user_content = (

@@ -85,19 +85,25 @@ class ModelCardAuditEnvironment(Environment):
 
         try:
             if action.action_type == "read_section":
-                if action.target not in self._state.model_card_sections:
+                # Case-insensitive lookup
+                target_key = next(
+                    (k for k in self._state.model_card_sections
+                     if k.lower().strip() == action.target.lower().strip()),
+                    None
+                )
+                if target_key is None:
                     error = f"Section '{action.target}' not found."
                     reward = -0.02
                     feedback = error
-                elif action.target in self._state.sections_reviewed:
+                elif target_key in self._state.sections_reviewed:
                     reward = -0.02
-                    content = self._state.model_card_sections[action.target]
-                    feedback = f"Already read '{action.target}'. Penalty applied for re-reading."
+                    content = self._state.model_card_sections[target_key]
+                    feedback = f"Already read '{target_key}'. Penalty applied for re-reading."
                 else:
-                    self._state.sections_reviewed.append(action.target)
+                    self._state.sections_reviewed.append(target_key)
                     reward = 0.02
-                    content = self._state.model_card_sections[action.target]
-                    feedback = f"Read new section '{action.target}'."
+                    content = self._state.model_card_sections[target_key]
+                    feedback = f"Read new section '{target_key}'."
 
             elif action.action_type == "check_field":
                 exists = action.target in self._state.model_card_sections
@@ -106,14 +112,25 @@ class ModelCardAuditEnvironment(Environment):
                 feedback = content
 
             elif action.action_type == "compare_sections":
-                s1 = self._state.model_card_sections.get(action.target, "[not found]")
-                s2 = self._state.model_card_sections.get(action.secondary_target or "", "[not found]")
+                # Case-insensitive lookup for both targets
+                key1 = next(
+                    (k for k in self._state.model_card_sections
+                     if k.lower().strip() == action.target.lower().strip()),
+                    None
+                )
+                key2 = next(
+                    (k for k in self._state.model_card_sections
+                     if k.lower().strip() == (action.secondary_target or "").lower().strip()),
+                    None
+                )
+                s1 = self._state.model_card_sections[key1] if key1 else "[not found]"
+                s2 = self._state.model_card_sections[key2] if key2 else "[not found]"
                 content = (
-                    f"--- {action.target} ---\n{s1}\n\n"
-                    f"--- {action.secondary_target} ---\n{s2}"
+                    f"--- {key1 or action.target} ---\n{s1}\n\n"
+                    f"--- {key2 or action.secondary_target} ---\n{s2}"
                 )
                 reward = 0.03
-                feedback = f"Compared '{action.target}' with '{action.secondary_target}'."
+                feedback = f"Compared '{key1 or action.target}' with '{key2 or action.secondary_target}'."
 
             elif action.action_type in ("flag_missing", "flag_inadequate", "flag_compliant"):
                 finding = {
@@ -178,17 +195,19 @@ class ModelCardAuditEnvironment(Environment):
         pass
 
     def _is_correct_finding(self, finding: dict) -> bool:
-        """Check if a finding matches any ground truth issue."""
+        """Check if a finding matches any ground truth issue (case-insensitive)."""
+        target = finding["target"].lower().strip()
         for gt in self._state.ground_truth_issues:
-            if (finding["target"] == gt["field"] and
+            if (target == gt["field"].lower().strip() and
                     finding["action_type"] == gt["expected_action"]):
                 return True
         return False
 
     def _partial_score(self) -> float:
-        """Compute running score as fraction of ground truth issues correctly found."""
+        """Compute running score using the actual task grader for accuracy."""
         if not self._state.ground_truth_issues:
             return 1.0
-        correct = sum(1 for f in self._state.agent_findings
-                      if self._is_correct_finding(f))
-        return round(correct / len(self._state.ground_truth_issues), 3)
+        grader = GRADERS.get(self._state.task_id)
+        if grader is None:
+            return 0.0
+        return grader(self._state.agent_findings, self._state.ground_truth_issues)

@@ -1,6 +1,11 @@
 from typing import List, Dict
 
 
+def _norm(s: str) -> str:
+    """Normalize field names for robust comparison."""
+    return s.lower().strip()
+
+
 def grade_easy(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
     """
     Easy task: 4 completely missing required fields.
@@ -14,7 +19,7 @@ def grade_easy(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
     correct = sum(
         1 for gt in ground_truth
         if any(
-            f["target"] == gt["field"] and f["action_type"] == "flag_missing"
+            _norm(f["target"]) == _norm(gt["field"]) and f["action_type"] == "flag_missing"
             for f in agent_findings
         )
     )
@@ -22,7 +27,7 @@ def grade_easy(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
     false_positives = sum(
         1 for f in agent_findings
         if f["action_type"] in ("flag_missing", "flag_inadequate")
-        and not any(f["target"] == gt["field"] for gt in ground_truth)
+        and not any(_norm(f["target"]) == _norm(gt["field"]) for gt in ground_truth)
     )
 
     score = (correct / len(ground_truth)) - min(0.30, false_positives * 0.05)
@@ -43,7 +48,7 @@ def grade_medium(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
     score = 0.0
 
     for gt in ground_truth:
-        matches = [f for f in agent_findings if f["target"] == gt["field"]]
+        matches = [f for f in agent_findings if _norm(f["target"]) == _norm(gt["field"])]
         if not matches:
             continue
         best = matches[0]
@@ -55,7 +60,7 @@ def grade_medium(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
     false_positives = sum(
         1 for f in agent_findings
         if f["action_type"] in ("flag_missing", "flag_inadequate")
-        and not any(f["target"] == gt["field"] for gt in ground_truth)
+        and not any(_norm(f["target"]) == _norm(gt["field"]) for gt in ground_truth)
     )
 
     score -= min(0.25, false_positives * 0.05)
@@ -75,7 +80,7 @@ def grade_hard(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
     for gt in ground_truth:
         weight = gt.get("weight", 0.20)
         found = any(
-            f["target"] == gt["field"] and f["action_type"] == gt["expected_action"]
+            _norm(f["target"]) == _norm(gt["field"]) and f["action_type"] == gt["expected_action"]
             for f in agent_findings
         )
         if found:
@@ -85,14 +90,14 @@ def grade_hard(agent_findings: List[Dict], ground_truth: List[Dict]) -> float:
             if key_evidence and any(
                 key_evidence.lower() in f.get("evidence", "").lower()
                 for f in agent_findings
-                if f["target"] == gt["field"]
+                if _norm(f["target"]) == _norm(gt["field"])
             ):
                 score += weight * 0.10
 
     false_positives = sum(
         1 for f in agent_findings
         if f["action_type"] in ("flag_missing", "flag_inadequate")
-        and not any(f["target"] == gt["field"] for gt in ground_truth)
+        and not any(_norm(f["target"]) == _norm(gt["field"]) for gt in ground_truth)
     )
 
     score -= min(0.20, false_positives * 0.04)
