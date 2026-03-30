@@ -79,20 +79,24 @@ Hard task violations include: MIT license incompatible with LLaMA-2 base model, 
 
 ## Baseline Scores
 
-Tested via Groq (temperature=0, seed=42).
+Scores produced with temperature=0, seed=42 for reproducibility.
 
 | Model | Task | Score | Notes |
 |-------|------|-------|-------|
-| `llama-3.3-70b-versatile` | easy | **0.9000** | 4 missing found (pre-flight); 2 LLM false positives on existing sections |
-| `llama-3.3-70b-versatile` | medium | **0.9000** | 2 missing (pre-flight) + 3 inadequate (LLM); 2 LLM false positives |
-| `llama-3.3-70b-versatile` | hard | **0.3700** | License + Bias correctly flagged; rate-limited before remaining 3 violations |
-| `llama-3.3-70b-versatile` | **average** | **0.7233** | |
-| `llama-3.1-8b-instant` *(8B baseline)* | easy | 1.0000 | Perfect |
-| `llama-3.1-8b-instant` *(8B baseline)* | medium | 0.6000 | Misses 2 absent sections without pre-flight |
-| `llama-3.1-8b-instant` *(8B baseline)* | hard | 0.2000 | Finds License violation only |
-| `llama-3.1-8b-instant` *(8B baseline)* | **average** | **0.6000** | |
+| Qwen-3 235B (Cerebras) | easy | **0.9000** | 4 missing found (pre-flight); 2 LLM false positives on existing sections |
+| Qwen-3 235B (Cerebras) | medium | **0.9000** | 2 missing (pre-flight) + 3 inadequate (LLM); 2 LLM false positives |
+| Qwen-3 235B (Cerebras) | hard | **1.0000** | Perfect — all 5 cross-section violations found |
+| Qwen-3 235B (Cerebras) | **average** | **0.9333** | |
+| Llama 3.3 70B (Groq) | easy | 0.9000 | 4 missing found (pre-flight); 2 LLM false positives |
+| Llama 3.3 70B (Groq) | medium | 0.9000 | 2 missing (pre-flight) + 3 inadequate; 2 LLM false positives |
+| Llama 3.3 70B (Groq) | hard | 0.3700 | License + Bias flagged; rate-limited before remaining violations |
+| Llama 3.3 70B (Groq) | **average** | **0.7233** | |
+| 8B baseline (llama-3.1-8b-instant) | easy | 1.0000 | Perfect |
+| 8B baseline (llama-3.1-8b-instant) | medium | 0.6000 | Misses 2 absent sections without pre-flight |
+| 8B baseline (llama-3.1-8b-instant) | hard | 0.2000 | Finds License violation only |
+| 8B baseline (llama-3.1-8b-instant) | **average** | **0.6000** | |
 
-The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM. The hard task compound-target splitter fix improved hard from 0.20 → 0.37; remaining gap is due to Groq rate limits cutting the hard episode short before all 5 violations are flagged.
+The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM. The hard task requires cross-section reasoning; Qwen-3 235B achieves a perfect score on hard by correctly identifying all 5 subtle violations.
 
 ## Setup
 
