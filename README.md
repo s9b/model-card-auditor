@@ -83,16 +83,16 @@ Tested via Groq (temperature=0, seed=42).
 
 | Model | Task | Score | Notes |
 |-------|------|-------|-------|
-| `llama-3.3-70b-versatile` | easy | **1.0000** | Perfect — all 4 missing sections found |
-| `llama-3.3-70b-versatile` | medium | **1.0000** | Perfect — 2 missing (pre-flight) + 3 inadequate (LLM) |
-| `llama-3.3-70b-versatile` | hard | **0.2000** | Finds CO₂ error; cross-section flags use compound targets |
-| `llama-3.3-70b-versatile` | **average** | **0.7333** | |
+| `llama-3.3-70b-versatile` | easy | **0.9000** | 4 missing found (pre-flight); 2 LLM false positives on existing sections |
+| `llama-3.3-70b-versatile` | medium | **0.9000** | 2 missing (pre-flight) + 3 inadequate (LLM); 2 LLM false positives |
+| `llama-3.3-70b-versatile` | hard | **0.3700** | License + Bias correctly flagged; rate-limited before remaining 3 violations |
+| `llama-3.3-70b-versatile` | **average** | **0.7233** | |
 | `llama-3.1-8b-instant` *(8B baseline)* | easy | 1.0000 | Perfect |
 | `llama-3.1-8b-instant` *(8B baseline)* | medium | 0.6000 | Misses 2 absent sections without pre-flight |
 | `llama-3.1-8b-instant` *(8B baseline)* | hard | 0.2000 | Finds License violation only |
 | `llama-3.1-8b-instant` *(8B baseline)* | **average** | **0.6000** | |
 
-The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM — lifting medium from 0.6 (8B) to 1.0 (70B). The hard task requires cross-section reasoning that benefits from stronger models; the 70B model identifies the correct violations but uses compound section names as targets, which the grader scores as false positives.
+The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM. The hard task compound-target splitter fix improved hard from 0.20 → 0.37; remaining gap is due to Groq rate limits cutting the hard episode short before all 5 violations are flagged.
 
 ## Setup
 
