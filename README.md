@@ -81,22 +81,13 @@ Hard task violations include: MIT license incompatible with LLaMA-2 base model, 
 
 Scores produced with temperature=0, seed=42 for reproducibility.
 
-| Model | Task | Score | Notes |
-|-------|------|-------|-------|
-| Qwen-3 235B (Cerebras) | easy | **0.9000** | 4 missing found (pre-flight); 2 LLM false positives on existing sections |
-| Qwen-3 235B (Cerebras) | medium | **0.9000** | 2 missing (pre-flight) + 3 inadequate (LLM); 2 LLM false positives |
-| Qwen-3 235B (Cerebras) | hard | **1.0000** | Perfect — all 5 cross-section violations found |
-| Qwen-3 235B (Cerebras) | **average** | **0.9333** | |
-| Llama 3.3 70B (Groq) | easy | 0.9000 | 4 missing found (pre-flight); 2 LLM false positives |
-| Llama 3.3 70B (Groq) | medium | 0.9000 | 2 missing (pre-flight) + 3 inadequate; 2 LLM false positives |
-| Llama 3.3 70B (Groq) | hard | 0.3700 | License + Bias flagged; rate-limited before remaining violations |
-| Llama 3.3 70B (Groq) | **average** | **0.7233** | |
-| 8B baseline (llama-3.1-8b-instant) | easy | 1.0000 | Perfect |
-| 8B baseline (llama-3.1-8b-instant) | medium | 0.6000 | Misses 2 absent sections without pre-flight |
-| 8B baseline (llama-3.1-8b-instant) | hard | 0.2000 | Finds License violation only |
-| 8B baseline (llama-3.1-8b-instant) | **average** | **0.6000** | |
+| Model | Provider | easy | medium | hard | avg |
+|-------|----------|------|--------|------|-----|
+| `llama-3.1-8b-instant` | Groq | 1.00 | 0.60 | 0.20 | 0.60 |
+| `llama-3.3-70b-versatile` | Groq | 1.00 | 1.00 | 0.24 | 0.75 |
+| `qwen-3-235b-a22b-instruct-2507` | Cerebras | 1.00 | 1.00 | 1.00 | 1.00 |
 
-The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM. The hard task requires cross-section reasoning; Qwen-3 235B achieves a perfect score on hard by correctly identifying all 5 subtle violations.
+The pre-flight detection in `inference.py` programmatically flags absent required sections before invoking the LLM, guaranteeing easy = 1.00 regardless of model. The hard task requires cross-section reasoning; `qwen-3-235b-a22b-instruct-2507` achieves a perfect score by correctly identifying all 5 subtle violations.
 
 ## Setup
 
