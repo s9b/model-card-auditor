@@ -17,8 +17,8 @@ dependencies = [
 ]
 
 [project.scripts]
-server = "server.app:main"
+server = "model_card_auditor.server.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["model_card_auditor*", "server*"]
+include = ["model_card_auditor*"]
