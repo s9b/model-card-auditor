@@ -8,3 +8,9 @@ venv/
 dist/
 build/
 .DS_Store
+CLAUDE.md
+SKILLS.md
+TASKS.md
+.claude/
+skills/
+debug_inference.py
