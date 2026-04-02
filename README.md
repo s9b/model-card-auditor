@@ -17,6 +17,29 @@ HuggingFace hosts 1.2M+ models. Most model cards are incomplete, misleading, or 
 
 This environment trains agents to audit model cards automatically — the same task a governance team at a model hub would run on every upload. Judges from Meta and HuggingFace write model cards professionally. They know this problem firsthand.
 
+## Quick Start (5 minutes)
+
+```bash
+git clone https://github.com/s9b/model-card-auditor
+cd model-card-auditor
+pip install -e .
+uvicorn model_card_auditor.server.app:app --host 0.0.0.0 --port 7860
+```
+
+Then in another terminal:
+
+```bash
+export API_BASE_URL="https://api.groq.com/openai/v1"
+export MODEL_NAME="llama-3.3-70b-versatile"
+export HF_TOKEN="your_groq_key_here"
+export ENV_URL="http://localhost:7860"
+python inference.py
+```
+
+## How It Works
+
+The agent calls `POST /reset?task_id=easy|medium|hard` to start a new episode and receives an initial observation listing the available model card sections. It then calls `POST /step` repeatedly with actions (reading sections, flagging issues), receiving an observation and reward after each step. When the agent has identified all compliance violations, it calls `submit_audit` to end the episode and receive a final graded score.
+
 ## Environment Overview
 
 An agent plays the role of an AI governance auditor. It receives a synthetic model card and must:
@@ -55,6 +78,8 @@ An agent plays the role of an AI governance auditor. It receives a synthetic mod
 
 ### Reward Shaping
 
+Each step returns a reward signal that helps the agent learn which actions are productive.
+
 | Action | Condition | Reward |
 |--------|-----------|--------|
 | `read_section` | New section | +0.02 |
@@ -92,16 +117,29 @@ The pre-flight detection in `inference.py` programmatically flags absent require
 ## Setup
 
 ```bash
-git clone https://github.com/saazbhargav/model-card-auditor
+git clone https://github.com/s9b/model-card-auditor
 cd model-card-auditor
 pip install -e .
 ```
 
 ## Running the Environment
 
+The live HuggingFace Space is already deployed at https://sazqt-model-card-auditor.hf.space — you can run inference against it without any local setup.
+
+To run locally:
+
 ```bash
 uvicorn model_card_auditor.server.app:app --host 0.0.0.0 --port 7860
 ```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `API_BASE_URL` | Yes | OpenAI-compatible endpoint base URL |
+| `MODEL_NAME` | Yes | Model identifier string |
+| `HF_TOKEN` | Yes | API key for the provider |
+| `ENV_URL` | No | Environment URL (default: localhost:7860) |
 
 ## Running the Baseline Agent
 
