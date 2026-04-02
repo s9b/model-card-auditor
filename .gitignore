@@ -14,3 +14,4 @@ TASKS.md
 .claude/
 skills/
 debug_inference.py
+uv.lock
