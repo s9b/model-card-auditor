@@ -13,11 +13,7 @@ import time
 # -- Structured logging: defined FIRST using only os, before any third-party --
 # -- imports that could crash and prevent [START] from ever printing -----------
 def _raw_print(line: str) -> None:
-    """Write directly to fd 1. Bypasses all Python buffering and encoding."""
-    try:
-        os.write(1, (line + "\n").encode("utf-8", errors="replace"))
-    except Exception:
-        pass
+    print(line, flush=True)
 
 
 def log_start(task, env="model-card-auditor", model=""):
@@ -26,7 +22,7 @@ def log_start(task, env="model-card-auditor", model=""):
 
 def log_step(step, action="", reward=0.0, done=False, error=None):
     done_str = "true" if done else "false"
-    error_str = repr(str(error)) if error else repr("")
+    error_str = str(error) if error else "null"
     _raw_print(
         f"[STEP] step={step} action={str(action)[:80]} "
         f"reward={float(reward):.2f} done={done_str} error={error_str}"
@@ -189,8 +185,9 @@ def run_task(task_id: str, env_url: str) -> float:
             raise ImportError("model_card_auditor package not available")
         with ModelCardAuditClient(base_url=env_url).sync() as env:
             return _run_task_inner(env, task_id, step_counter)
-    except Exception:
-        log_end(success=False, steps=step_counter, score=0.01, rewards=[])
+    except Exception as exc:
+        log_step(step=1, action="setup_failed", reward=0.01, done=True, error="setup_failed")
+        log_end(success=False, steps=1, score=0.01, rewards=[0.01])
         raise
 
 
