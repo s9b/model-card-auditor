@@ -22,6 +22,22 @@ api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "")
 # ── OpenAI Client (mandatory: "Participants must use OpenAI Client") ───────────
 client = OpenAI(api_key=api_key, base_url=API_BASE_URL)
 
+
+# ── Structured logging (openenv validator format) ──────────────────────────────
+def log_start(task, env="", model=""):
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step, action="", reward=0.0, done=False, error=None):
+    print(f"[STEP] step={step} action={str(action)[:80]} reward={reward:.4f} done={done} error={error}", flush=True)
+
+
+def log_end(success=False, steps=0, score=0.0, rewards=None):
+    if rewards is None:
+        rewards = []
+    print(f"[END] score={score:.4f} steps={steps} success={success} rewards={rewards}", flush=True)
+
+
 TEMPERATURE  = 0.0
 MAX_TOKENS   = 512
 MAX_STEPS    = 35
@@ -166,14 +182,14 @@ def parse_model_action(response_text: str) -> ModelCardAction:
 
 def run_task(task_id: str, env_url: str) -> float:
     """Run one complete episode. Returns the final compliance score."""
-    print(f"[START] task={task_id}", flush=True)
+    log_start(task=task_id, env="model-card-auditor", model=MODEL_NAME)
 
     step_counter = 0
     try:
         with ModelCardAuditClient(base_url=env_url).sync() as env:
             return _run_task_inner(env, task_id, step_counter)
     except Exception as e:
-        print(f"[END] task={task_id} score=0.0000 steps={step_counter}", flush=True)
+        log_end(success=False, steps=0, score=0.0, rewards=[])
         raise
 
 
@@ -183,6 +199,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
     # EnvClient.reset() returns a StepResult; extract the observation
     observation = getattr(reset_result, "observation", reset_result)
     history = []
+    rewards_list = []
     # Accumulate conversation history so the model sees its prior actions
     system_prompt = HARD_SYSTEM_PROMPT if task_id == "hard" else SYSTEM_PROMPT
     messages = [{"role": "system", "content": system_prompt}]
@@ -206,7 +223,8 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
             observation = result.observation
             reward = result.reward or 0.0
             step_counter += 1
-            print(f"[STEP] step={step_counter} reward={reward:.4f}", flush=True)
+            rewards_list.append(reward)
+            log_step(step=step_counter, action=preflight_action.action_type, reward=reward, done=result.done, error=observation.last_action_error)
             print(f"Pre-flight: flag_missing('{required_section}') -> reward {reward:+.2f}")
             messages.append({
                 "role": "user",
@@ -224,7 +242,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
             })
             if result.done:
                 final_score = observation.partial_score
-                print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+                log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
                 return final_score
     # ── End pre-flight ─────────────────────────────────────────────────────────
 
@@ -241,9 +259,10 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
         step_counter += 1
         submit_reward = submit_result.reward or 0.0
         final_score = submit_result.observation.partial_score
-        print(f"[STEP] step={step_counter} reward={submit_reward:.4f}", flush=True)
+        rewards_list.append(submit_reward)
+        log_step(step=step_counter, action="submit_audit", reward=submit_reward, done=True, error=None)
         print(f"Easy early exit: submit_audit -> partial_score {final_score:.3f}")
-        print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+        log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
         return final_score
 
     for step in range(MAX_STEPS):
@@ -316,7 +335,8 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
                     split_obs = split_result.observation
                     split_reward = split_result.reward or 0.0
                     step_counter += 1
-                    print(f"[STEP] step={step_counter} reward={split_reward:.4f}", flush=True)
+                    rewards_list.append(split_reward)
+                    log_step(step=step_counter, action=split_action.action_type, reward=split_reward, done=split_result.done, error=split_obs.last_action_error)
                     history.append(
                         f"Step {step+1}(split): {action.action_type}({part}) "
                         f"-> reward {split_reward:+.2f}"
@@ -324,7 +344,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
                     print(f"  [Split] {action.action_type}({part}) -> reward {split_reward:+.2f}")
                     if split_result.done:
                         final_score = split_obs.partial_score
-                        print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+                        log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
                         return final_score
                 observation = split_obs
                 messages.append({"role": "assistant", "content": response_text})
@@ -348,12 +368,13 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
         observation = result.observation
         reward      = result.reward or 0.0
         step_counter += 1
-        print(f"[STEP] step={step_counter} reward={reward:.4f}", flush=True)
+        rewards_list.append(reward)
+        log_step(step=step_counter, action=action.action_type, reward=reward, done=result.done, error=observation.last_action_error)
 
-        error_flag = " ERROR" if observation.last_action_error else ""
         history.append(
             f"Step {step + 1}: {action.action_type}({action.target}) "
-            f"-> reward {reward:+.2f}{error_flag}"
+            f"-> reward {reward:+.2f}"
+            + (" ERROR" if observation.last_action_error else "")
         )
         print(
             f"  Reward: {reward:+.2f} | Done: {result.done} | "
@@ -368,7 +389,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
         print(f"Reached max steps ({MAX_STEPS}).")
 
     final_score = observation.partial_score
-    print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+    log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
     return final_score
 
 
