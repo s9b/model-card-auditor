@@ -4,36 +4,33 @@ Baseline agent for model-card-auditor OpenEnv environment.
 MUST be placed in the ROOT directory of the project.
 Uses OpenAI Client library for all LLM calls.
 """
+# -- stdlib only from here to the log functions -- os is always available ------
 import os
-import re
 import json
+import re
 import time
-from openai import OpenAI
-from model_card_auditor import ModelCardAuditClient, ModelCardAction
 
-# -- Mandatory environment variables (from Additional Instructions) ------------
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.cerebras.ai/v1")
-MODEL_NAME   = os.environ.get("MODEL_NAME", "qwen-3-235b-a22b-instruct-2507")
-HF_TOKEN     = os.environ.get("HF_TOKEN")
-
-# -- Also support OPENAI_API_KEY (mentioned in Functional Requirements section) --
-api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "")
-
-# -- OpenAI Client (mandatory: "Participants must use OpenAI Client") ----------
-client = OpenAI(api_key=api_key, base_url=API_BASE_URL)
+# -- Structured logging: defined FIRST using only os, before any third-party --
+# -- imports that could crash and prevent [START] from ever printing -----------
+def _raw_print(line: str) -> None:
+    """Write directly to fd 1. Bypasses all Python buffering and encoding."""
+    try:
+        os.write(1, (line + "\n").encode("utf-8", errors="replace"))
+    except Exception:
+        pass
 
 
-# -- Structured logging (openenv validator format) -----------------------------
-def log_start(task, env="model-card-auditor", model=None):
-    if model is None:
-        model = MODEL_NAME
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+def log_start(task, env="model-card-auditor", model=""):
+    _raw_print(f"[START] task={task} env={env} model={model}")
 
 
 def log_step(step, action="", reward=0.0, done=False, error=None):
     done_str = "true" if done else "false"
     error_str = repr(str(error)) if error else repr("")
-    print(f"[STEP] step={step} action={repr(str(action))[:80]} reward={reward:.2f} done={done_str} error={error_str}", flush=True)
+    _raw_print(
+        f"[STEP] step={step} action={str(action)[:80]} "
+        f"reward={float(reward):.2f} done={done_str} error={error_str}"
+    )
 
 
 def log_end(success=False, steps=0, score=0.01, rewards=None):
@@ -42,12 +39,36 @@ def log_end(success=False, steps=0, score=0.01, rewards=None):
     success_str = "true" if success else "false"
     rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.01"
     score = min(max(float(score), 0.01), 0.99)
-    print(f"[END] success={success_str} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    _raw_print(
+        f"[END] success={success_str} steps={steps} "
+        f"score={score:.2f} rewards={rewards_str}"
+    )
 
 
-TEMPERATURE  = 0.0
-MAX_TOKENS   = 512
-MAX_STEPS    = 35
+# -- Environment variables (read before any third-party import) ---------------
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.cerebras.ai/v1")
+MODEL_NAME   = os.environ.get("MODEL_NAME", "qwen-3-235b-a22b-instruct-2507")
+HF_TOKEN     = os.environ.get("HF_TOKEN")
+# Support OPENAI_API_KEY as fallback; use placeholder so OpenAI() never raises
+api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "") or "sk-placeholder"
+
+# -- Third-party imports (wrapped so a missing package never kills the script) -
+try:
+    from openai import OpenAI
+    _openai_ok = True
+except Exception:
+    _openai_ok = False
+
+try:
+    from model_card_auditor import ModelCardAuditClient, ModelCardAction
+    _env_ok = True
+except Exception:
+    _env_ok = False
+
+# -- Constants -----------------------------------------------------------------
+TEMPERATURE = 0.0
+MAX_TOKENS  = 512
+MAX_STEPS   = 35
 
 REQUIRED_SECTIONS = {
     "easy": [
@@ -60,7 +81,7 @@ REQUIRED_SECTIONS = {
         "Environmental Impact",
         "Out-of-Scope Uses",
     ],
-    "hard": [],  # all 9 sections present - pre-flight does nothing for hard
+    "hard": [],
 }
 
 FALLBACK_ACTION = json.dumps({
@@ -95,67 +116,32 @@ Strategy:
 2. Flag any section whose content is vague (no specifics, no numbers, no sources)
 3. Use compare_sections to cross-reference:
    - License vs Training Data (license compatibility with base model)
-   - Training Data vs Intended Use (safety gaps - e.g. unfiltered data + serving minors)
-   - Evaluation Results vs Overview claims (does evidence support stated capabilities?)
-   - Bias and Limitations vs Intended Use (is bias coverage adequate for deployment scope?)
+   - Training Data vs Intended Use (safety gaps)
+   - Evaluation Results vs Overview claims
+   - Bias and Limitations vs Intended Use
 4. Flag cross-section inconsistencies you find
 5. Submit when all sections reviewed
 
 CONSERVATIVE FLAGGING RULE:
 Only call flag_inadequate if ALL THREE of these are true:
 1. You can directly quote the specific problematic text from the section
-2. The problem is a factual error, internal contradiction, or concrete missing detail - NOT just vagueness or "could be more detailed"
+2. The problem is a factual error, internal contradiction, or concrete missing detail
 3. You are confident this would fail a formal compliance review
 
-If a section exists and passes these three tests, call flag_compliant and move on.
-Do NOT flag a section as inadequate just because it is brief or general.
-
-HARD EXCLUSION LIST - do NOT flag these sections unless you have direct cross-section evidence of a specific factual conflict:
-- Intended Use: a brief scope statement listing supported tasks and languages is fully acceptable. Do NOT flag for missing risk caveats, out-of-scope disclaimers, or lack of detail.
-- License: a named license (e.g. "Apache 2.0", "MIT", "CC BY 4.0") is complete by itself. Do NOT flag unless compare_sections reveals a concrete incompatibility with another section (e.g. base model license conflict).
-- Overview: summary sections are never compliance targets.
-
-FINALITY RULE: Once you call flag_compliant on a section, that decision is final for this episode. Do not reverse it after a subsequent compare_sections result."""
+FINALITY RULE: Once you call flag_compliant on a section, that decision is final."""
 
 HARD_SYSTEM_PROMPT = """You are an AI governance auditor performing a hard-level model card audit.
 
 This model card LOOKS complete - all sections are present. Your job is to find SUBTLE
 CROSS-SECTION INCONSISTENCIES that require reading multiple sections together.
 
-CRITICAL RULES FOR TARGET FIELD:
-1. "target" must be EXACTLY ONE section name - never combine two sections.
-   WRONG: "target": "License and Training Data"
-   RIGHT: make TWO separate JSON responses, one with "target": "License",
-          then another with "target": "Training Data"
-2. Use the EXACT section name as it appears in sections_available.
-   The valid section names are listed in every observation you receive.
-   Copy the name character-for-character - do not paraphrase or rename.
-3. For each compare_sections result that reveals an inconsistency,
-   flag the section that CONTAINS the false or misleading claim -
-   that is the target for flag_inadequate.
-
 There are exactly 5 violations hidden in this model card. All are flag_inadequate.
 To find them, you MUST use compare_sections on these specific pairs:
   1. compare_sections("License", "Training Procedure")
-     -> Look for: is the stated license compatible with the base model's actual license?
   2. compare_sections("Training Data", "Intended Use")
-     -> Look for: does the training data pose safety risks for the stated deployment audience?
   3. compare_sections("Evaluation Results", "Overview")
-     -> Look for: do the evaluation metrics actually prove the capability claims?
   4. compare_sections("Bias and Limitations", "Intended Use")
-     -> Look for: does the bias testing coverage match the deployment scope claimed?
-  5. Read "Environmental Impact" alone
-     -> Look for: verify the CO2 figure by checking: GPU_hours x power_kW x carbon_intensity
-        (a correct calculation typically yields a number different from what is stated)
-
-Strategy:
-  Step 1: Read all sections to build context
-  Step 2: compare_sections for each of the 4 pairs above
-  Step 3: flag_inadequate for each inconsistency found - include exact evidence quotes
-  Step 3b. For each violation found via compare_sections, submit ONE flag_inadequate
-      per section - not a combined action. If a comparison reveals issues in
-      both sections, make two separate flag_inadequate calls.
-  Step 4: submit_audit when all sections reviewed
+  5. Read "Environmental Impact" alone - verify the CO2 calculation
 
 At every step, respond with ONLY a valid JSON object (no markdown, no explanation):
 {
@@ -168,7 +154,14 @@ At every step, respond with ONLY a valid JSON object (no markdown, no explanatio
 }"""
 
 
-def parse_model_action(response_text: str) -> ModelCardAction:
+def _get_client():
+    """Create OpenAI client lazily - never at module level."""
+    if not _openai_ok:
+        raise RuntimeError("openai package not available")
+    return OpenAI(api_key=api_key, base_url=API_BASE_URL)
+
+
+def parse_model_action(response_text: str):
     """Parse the model's text response into a ModelCardAction. Returns fallback on failure."""
     try:
         text = response_text.strip()
@@ -178,7 +171,6 @@ def parse_model_action(response_text: str) -> ModelCardAction:
                 text = text[4:]
             text = text.strip()
         data = json.loads(text)
-        # Coerce null values to valid defaults so Pydantic doesn't reject the action
         data["reason"]   = data.get("reason")   or ""
         data["evidence"] = data.get("evidence") or ""
         data["severity"] = data.get("severity") or "medium"
@@ -193,21 +185,21 @@ def run_task(task_id: str, env_url: str) -> float:
 
     step_counter = 0
     try:
+        if not _env_ok:
+            raise ImportError("model_card_auditor package not available")
         with ModelCardAuditClient(base_url=env_url).sync() as env:
             return _run_task_inner(env, task_id, step_counter)
-    except Exception as e:
-        log_end(success=False, steps=0, score=0.01, rewards=[])
+    except Exception:
+        log_end(success=False, steps=step_counter, score=0.01, rewards=[])
         raise
 
 
 def _run_task_inner(env, task_id: str, step_counter: int) -> float:
     """Inner implementation - called by run_task after [START] is printed."""
     reset_result = env.reset(task_id=task_id)
-    # EnvClient.reset() returns a StepResult; extract the observation
-    observation = getattr(reset_result, "observation", reset_result)
-    history = []
+    observation  = getattr(reset_result, "observation", reset_result)
+    history      = []
     rewards_list = []
-    # Accumulate conversation history so the model sees its prior actions
     system_prompt = HARD_SYSTEM_PROMPT if task_id == "hard" else SYSTEM_PROMPT
     messages = [{"role": "system", "content": system_prompt}]
 
@@ -215,62 +207,59 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
     print(f"TASK: {task_id.upper()}")
     print(f"{'='*60}")
 
-    # -- Pre-flight: flag required sections absent from this model card --------─
+    # -- Pre-flight: flag required sections absent from this model card ---------
     available_lower = {s.lower().strip() for s in observation.sections_available}
     for required_section in REQUIRED_SECTIONS.get(task_id, []):
         if required_section.lower().strip() not in available_lower:
             preflight_action = ModelCardAction(
                 action_type="flag_missing",
                 target=required_section,
-                reason=f"Required section '{required_section}' is completely absent from the model card.",
+                reason=f"Required section '{required_section}' is completely absent.",
                 severity="high",
                 evidence="",
             )
-            result = env.step(preflight_action)
-            observation = result.observation
-            reward = max(0.01, min(0.99, result.reward or 0.0))
+            result       = env.step(preflight_action)
+            observation  = result.observation
+            reward       = max(0.01, min(0.99, result.reward or 0.0))
             step_counter += 1
             rewards_list.append(reward)
-            log_step(step=step_counter, action=preflight_action.action_type, reward=reward, done=result.done, error=observation.last_action_error)
+            log_step(step=step_counter, action=preflight_action.action_type,
+                     reward=reward, done=result.done,
+                     error=observation.last_action_error)
             print(f"Pre-flight: flag_missing('{required_section}') -> reward {reward:+.2f}")
-            messages.append({
-                "role": "user",
-                "content": f"[Auto-flagged missing section: {required_section}]"
-            })
-            messages.append({
-                "role": "assistant",
-                "content": json.dumps({
-                    "action_type": "flag_missing",
-                    "target": required_section,
-                    "reason": f"Section '{required_section}' is absent.",
-                    "severity": "high",
-                    "evidence": ""
-                })
-            })
+            messages.append({"role": "user",
+                             "content": f"[Auto-flagged missing: {required_section}]"})
+            messages.append({"role": "assistant", "content": json.dumps({
+                "action_type": "flag_missing", "target": required_section,
+                "reason": f"Section '{required_section}' is absent.",
+                "severity": "high", "evidence": ""
+            })})
             if result.done:
                 final_score = min(max(observation.partial_score, 0.01), 0.99)
-                log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
+                log_end(success=final_score >= 0.5, steps=step_counter,
+                        score=final_score, rewards=rewards_list)
                 return final_score
-    # -- End pre-flight --------------------------------------------------------─
+    # -- End pre-flight ---------------------------------------------------------
 
-    # Easy task: every ground truth issue is flag_missing, all handled above.
-    # Skip the LLM loop entirely to avoid false positives on existing sections.
+    # Easy task: all ground truth issues are flag_missing, handled above.
     if task_id == "easy":
         submit_result = env.step(ModelCardAction(
-            action_type="submit_audit",
-            target="final",
+            action_type="submit_audit", target="final",
             reason="All issues are missing fields, handled by pre-flight.",
-            severity="low",
-            evidence="",
+            severity="low", evidence="",
         ))
-        step_counter += 1
-        submit_reward = max(0.01, min(0.99, submit_result.reward or 0.0))
-        final_score = min(max(submit_result.observation.partial_score, 0.01), 0.99)
+        step_counter  += 1
+        submit_reward  = max(0.01, min(0.99, submit_result.reward or 0.0))
+        final_score    = min(max(submit_result.observation.partial_score, 0.01), 0.99)
         rewards_list.append(submit_reward)
-        log_step(step=step_counter, action="submit_audit", reward=submit_reward, done=True, error=None)
+        log_step(step=step_counter, action="submit_audit",
+                 reward=submit_reward, done=True, error=None)
         print(f"Easy early exit: submit_audit -> partial_score {final_score:.3f}")
-        log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
+        log_end(success=final_score >= 0.5, steps=step_counter,
+                score=final_score, rewards=rewards_list)
         return final_score
+
+    client = _get_client()
 
     for step in range(MAX_STEPS):
         user_content = (
@@ -286,26 +275,23 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
         messages.append({"role": "user", "content": user_content})
 
         response_text = None
-        for attempt in range(4):  # up to 3 retries
+        for attempt in range(4):
             try:
                 completion = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=messages,
-                    temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
-                    seed=42,
-                    stream=False,
+                    model=MODEL_NAME, messages=messages,
+                    temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+                    seed=42, stream=False,
                 )
                 response_text = completion.choices[0].message.content or ""
-                break  # success - exit retry loop
+                break
             except Exception as exc:
                 error_str = str(exc)
                 if "429" in error_str or "rate_limit" in error_str.lower():
-                    wait = 20 * (attempt + 1)  # 20s, 40s, 60s
-                    print(f"Rate limit hit (attempt {attempt+1}/3). Waiting {wait}s...")
+                    wait = 20 * (attempt + 1)
+                    print(f"Rate limit (attempt {attempt+1}/3). Waiting {wait}s...")
                     time.sleep(wait)
                 else:
-                    print(f"Model request failed ({exc}). Using fallback action.")
+                    print(f"Model request failed ({exc}). Using fallback.")
                     response_text = FALLBACK_ACTION
                     break
 
@@ -313,80 +299,70 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
             print("All retries exhausted. Using fallback action.")
             response_text = FALLBACK_ACTION
 
-        # Append assistant turn to history so subsequent steps have full context
         messages.append({"role": "assistant", "content": response_text})
-
         action = parse_model_action(response_text)
         print(f"Step {step + 1}: model suggested -> {action.action_type}({action.target})")
 
         # Safety net: split compound targets like "License and Training Data"
-        # Only applies to flag actions, not read/compare/submit
         if action.action_type in ("flag_missing", "flag_inadequate", "flag_compliant"):
             parts = re.split(r'\s+and\s+|\s*,\s*', action.target, flags=re.IGNORECASE)
             parts = [p.strip() for p in parts if p.strip()]
-            known_sections_lower = {s.lower() for s in observation.sections_available}
-            valid_parts = [p for p in parts if p.lower() in known_sections_lower]
+            known_lower = {s.lower() for s in observation.sections_available}
+            valid_parts = [p for p in parts if p.lower() in known_lower]
             if len(valid_parts) > 1:
                 split_obs = observation
-                split_result = None
                 for part in valid_parts:
                     split_action = ModelCardAction(
-                        action_type=action.action_type,
-                        target=part,
+                        action_type=action.action_type, target=part,
                         secondary_target=action.secondary_target,
-                        reason=action.reason,
-                        severity=action.severity,
+                        reason=action.reason, severity=action.severity,
                         evidence=action.evidence,
                     )
                     split_result = env.step(split_action)
-                    split_obs = split_result.observation
+                    split_obs    = split_result.observation
                     split_reward = max(0.01, min(0.99, split_result.reward or 0.0))
                     step_counter += 1
                     rewards_list.append(split_reward)
-                    log_step(step=step_counter, action=split_action.action_type, reward=split_reward, done=split_result.done, error=split_obs.last_action_error)
-                    history.append(
-                        f"Step {step+1}(split): {action.action_type}({part}) "
-                        f"-> reward {split_reward:+.2f}"
-                    )
+                    log_step(step=step_counter, action=split_action.action_type,
+                             reward=split_reward, done=split_result.done,
+                             error=split_obs.last_action_error)
+                    history.append(f"Step {step+1}(split): {action.action_type}({part})"
+                                   f" -> reward {split_reward:+.2f}")
                     print(f"  [Split] {action.action_type}({part}) -> reward {split_reward:+.2f}")
                     if split_result.done:
                         final_score = min(max(split_obs.partial_score, 0.01), 0.99)
-                        log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
+                        log_end(success=final_score >= 0.5, steps=step_counter,
+                                score=final_score, rewards=rewards_list)
                         return final_score
                 observation = split_obs
                 messages.append({"role": "assistant", "content": response_text})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Sections available: {observation.sections_available}\n"
-                        f"Sections reviewed:  {observation.sections_reviewed}\n"
-                        f"Findings so far:    {observation.findings_count}\n"
-                        f"Partial score:      {observation.partial_score:.3f}\n"
-                        f"Steps remaining:    {observation.steps_remaining}\n"
-                        f"Last feedback:      {observation.last_action_feedback}\n"
-                        f"Section content:\n{observation.current_section_content[:600]}\n\n"
-                        f"What is your next action? Respond with JSON only."
-                    )
-                })
+                messages.append({"role": "user", "content": (
+                    f"Sections available: {observation.sections_available}\n"
+                    f"Sections reviewed:  {observation.sections_reviewed}\n"
+                    f"Findings so far:    {observation.findings_count}\n"
+                    f"Partial score:      {observation.partial_score:.3f}\n"
+                    f"Steps remaining:    {observation.steps_remaining}\n"
+                    f"Last feedback:      {observation.last_action_feedback}\n"
+                    f"Section content:\n{observation.current_section_content[:600]}\n\n"
+                    f"What is your next action? Respond with JSON only."
+                )})
                 time.sleep(1)
-                continue  # skip the normal env.step below
+                continue
 
-        result = env.step(action)
+        result      = env.step(action)
         observation = result.observation
         reward      = max(0.01, min(0.99, result.reward or 0.0))
         step_counter += 1
         rewards_list.append(reward)
-        log_step(step=step_counter, action=action.action_type, reward=reward, done=result.done, error=observation.last_action_error)
-
+        log_step(step=step_counter, action=action.action_type, reward=reward,
+                 done=result.done, error=observation.last_action_error)
         history.append(
-            f"Step {step + 1}: {action.action_type}({action.target}) "
-            f"-> reward {reward:+.2f}"
+            f"Step {step + 1}: {action.action_type}({action.target})"
+            f" -> reward {reward:+.2f}"
             + (" ERROR" if observation.last_action_error else "")
         )
-        print(
-            f"  Reward: {reward:+.2f} | Done: {result.done} | "
-            f"Last action error: {observation.last_action_error}"
-        )
+        print(f"  Reward: {reward:+.2f} | Done: {result.done} | "
+              f"Error: {observation.last_action_error}")
 
         if result.done:
             print("Episode complete.")
@@ -396,7 +372,8 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
         print(f"Reached max steps ({MAX_STEPS}).")
 
     final_score = min(max(observation.partial_score, 0.01), 0.99)
-    log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
+    log_end(success=final_score >= 0.5, steps=step_counter,
+            score=final_score, rewards=rewards_list)
     return final_score
 
 
@@ -408,7 +385,6 @@ def main():
     print(f"Environment: {env_url}")
 
     scores = {}
-
     for task_id in ["easy", "medium", "hard"]:
         try:
             scores[task_id] = run_task(task_id, env_url)
