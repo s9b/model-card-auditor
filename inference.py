@@ -1,5 +1,3 @@
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
 """
 inference.py
 Baseline agent for model-card-auditor OpenEnv environment.
@@ -7,37 +5,46 @@ MUST be placed in the ROOT directory of the project.
 Uses OpenAI Client library for all LLM calls.
 """
 import os
+import os as _os
 import re
 import json
 import time
 from openai import OpenAI
 from model_card_auditor import ModelCardAuditClient, ModelCardAction
 
-# -- Mandatory environment variables (from Additional Instructions) ------------─
+# -- Mandatory environment variables (from Additional Instructions) ------------
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.cerebras.ai/v1")
 MODEL_NAME   = os.environ.get("MODEL_NAME", "qwen-3-235b-a22b-instruct-2507")
 HF_TOKEN     = os.environ.get("HF_TOKEN")
 
-# -- Also support OPENAI_API_KEY (mentioned in Functional Requirements section) ─
+# -- Also support OPENAI_API_KEY (mentioned in Functional Requirements section) --
 api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "")
 
-# -- OpenAI Client (mandatory: "Participants must use OpenAI Client") ----------─
+# -- OpenAI Client (mandatory: "Participants must use OpenAI Client") ----------
 client = OpenAI(api_key=api_key, base_url=API_BASE_URL)
 
 
-# -- Structured logging (openenv validator format) ------------------------------
+# -- Structured logging (openenv validator format) -----------------------------
+def _raw_print(line: str) -> None:
+    """Write directly to fd 1, no Python buffering, no encoding issues."""
+    try:
+        _os.write(1, (line + "\n").encode("utf-8", errors="replace"))
+    except Exception:
+        pass
+
+
 def log_start(task, env="", model=""):
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+    _raw_print(f"[START] task={task} env={env} model={model}")
 
 
 def log_step(step, action="", reward=0.0, done=False, error=None):
-    print(f"[STEP] step={step} action={str(action)[:80]} reward={reward:.4f} done={done} error={error}", flush=True)
+    _raw_print(f"[STEP] step={step} action={str(action)[:80]} reward={float(reward):.4f} done={done} error={error}")
 
 
 def log_end(success=False, steps=0, score=0.0, rewards=None):
     if rewards is None:
         rewards = []
-    print(f"[END] score={score:.4f} steps={steps} success={success} rewards={rewards}", flush=True)
+    _raw_print(f"[END] score={float(score):.4f} steps={int(steps)} success={success} rewards={rewards}")
 
 
 TEMPERATURE  = 0.0
