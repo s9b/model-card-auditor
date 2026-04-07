@@ -177,6 +177,9 @@ def run_task(env, task_id: str) -> float:
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()}")
     print(f"{'='*60}")
+    print(f"[START] task={task_id}", flush=True)
+
+    step_counter = 0
 
     # ── Pre-flight: flag required sections absent from this model card ─────────
     available_lower = {s.lower().strip() for s in observation.sections_available}
@@ -192,6 +195,8 @@ def run_task(env, task_id: str) -> float:
             result = env.step(preflight_action)
             observation = result.observation
             reward = result.reward or 0.0
+            step_counter += 1
+            print(f"[STEP] step={step_counter} reward={reward:.4f}", flush=True)
             print(f"Pre-flight: flag_missing('{required_section}') -> reward {reward:+.2f}")
             messages.append({
                 "role": "user",
@@ -208,7 +213,9 @@ def run_task(env, task_id: str) -> float:
                 })
             })
             if result.done:
-                return observation.partial_score
+                final_score = observation.partial_score
+                print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+                return final_score
     # ── End pre-flight ─────────────────────────────────────────────────────────
 
     # Easy task: every ground truth issue is flag_missing, all handled above.
@@ -221,8 +228,13 @@ def run_task(env, task_id: str) -> float:
             severity="low",
             evidence="",
         ))
-        print(f"Easy early exit: submit_audit -> partial_score {submit_result.observation.partial_score:.3f}")
-        return submit_result.observation.partial_score
+        step_counter += 1
+        submit_reward = submit_result.reward or 0.0
+        final_score = submit_result.observation.partial_score
+        print(f"[STEP] step={step_counter} reward={submit_reward:.4f}", flush=True)
+        print(f"Easy early exit: submit_audit -> partial_score {final_score:.3f}")
+        print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+        return final_score
 
     for step in range(MAX_STEPS):
         user_content = (
@@ -293,13 +305,17 @@ def run_task(env, task_id: str) -> float:
                     split_result = env.step(split_action)
                     split_obs = split_result.observation
                     split_reward = split_result.reward or 0.0
+                    step_counter += 1
+                    print(f"[STEP] step={step_counter} reward={split_reward:.4f}", flush=True)
                     history.append(
                         f"Step {step+1}(split): {action.action_type}({part}) "
                         f"-> reward {split_reward:+.2f}"
                     )
                     print(f"  [Split] {action.action_type}({part}) -> reward {split_reward:+.2f}")
                     if split_result.done:
-                        return split_obs.partial_score
+                        final_score = split_obs.partial_score
+                        print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+                        return final_score
                 observation = split_obs
                 messages.append({"role": "assistant", "content": response_text})
                 messages.append({
@@ -321,6 +337,8 @@ def run_task(env, task_id: str) -> float:
         result = env.step(action)
         observation = result.observation
         reward      = result.reward or 0.0
+        step_counter += 1
+        print(f"[STEP] step={step_counter} reward={reward:.4f}", flush=True)
 
         error_flag = " ERROR" if observation.last_action_error else ""
         history.append(
@@ -339,7 +357,9 @@ def run_task(env, task_id: str) -> float:
     else:
         print(f"Reached max steps ({MAX_STEPS}).")
 
-    return observation.partial_score
+    final_score = observation.partial_score
+    print(f"[END] task={task_id} score={final_score:.4f} steps={step_counter}", flush=True)
+    return final_score
 
 
 def main():
