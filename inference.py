@@ -12,8 +12,8 @@ from openai import OpenAI
 from model_card_auditor import ModelCardAuditClient, ModelCardAction
 
 # ── Mandatory environment variables (from Additional Instructions) ─────────────
-API_BASE_URL = os.environ.get("API_BASE_URL")
-MODEL_NAME   = os.environ.get("MODEL_NAME")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.cerebras.ai/v1")
+MODEL_NAME   = os.environ.get("MODEL_NAME", "qwen-3-235b-a22b-instruct-2507")
 HF_TOKEN     = os.environ.get("HF_TOKEN")
 
 # ── Also support OPENAI_API_KEY (mentioned in Functional Requirements section) ─
@@ -164,8 +164,21 @@ def parse_model_action(response_text: str) -> ModelCardAction:
         return ModelCardAction(**json.loads(FALLBACK_ACTION))
 
 
-def run_task(env, task_id: str) -> float:
+def run_task(task_id: str, env_url: str) -> float:
     """Run one complete episode. Returns the final compliance score."""
+    print(f"[START] task={task_id}", flush=True)
+
+    step_counter = 0
+    try:
+        with ModelCardAuditClient(base_url=env_url).sync() as env:
+            return _run_task_inner(env, task_id, step_counter)
+    except Exception as e:
+        print(f"[END] task={task_id} score=0.0000 steps={step_counter}", flush=True)
+        raise
+
+
+def _run_task_inner(env, task_id: str, step_counter: int) -> float:
+    """Inner implementation — called by run_task after [START] is printed."""
     reset_result = env.reset(task_id=task_id)
     # EnvClient.reset() returns a StepResult; extract the observation
     observation = getattr(reset_result, "observation", reset_result)
@@ -177,9 +190,6 @@ def run_task(env, task_id: str) -> float:
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()}")
     print(f"{'='*60}")
-    print(f"[START] task={task_id}", flush=True)
-
-    step_counter = 0
 
     # ── Pre-flight: flag required sections absent from this model card ─────────
     available_lower = {s.lower().strip() for s in observation.sections_available}
@@ -372,8 +382,10 @@ def main():
     scores = {}
 
     for task_id in ["easy", "medium", "hard"]:
-        with ModelCardAuditClient(base_url=env_url).sync() as env:
-            scores[task_id] = run_task(env, task_id)
+        try:
+            scores[task_id] = run_task(task_id, env_url)
+        except Exception:
+            scores[task_id] = 0.0
 
     print(f"\n{'='*60}")
     print("BASELINE RESULTS")
