@@ -1,3 +1,5 @@
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
 """
 inference.py
 Baseline agent for model-card-auditor OpenEnv environment.
@@ -11,19 +13,19 @@ import time
 from openai import OpenAI
 from model_card_auditor import ModelCardAuditClient, ModelCardAction
 
-# ── Mandatory environment variables (from Additional Instructions) ─────────────
+# -- Mandatory environment variables (from Additional Instructions) ------------─
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.cerebras.ai/v1")
 MODEL_NAME   = os.environ.get("MODEL_NAME", "qwen-3-235b-a22b-instruct-2507")
 HF_TOKEN     = os.environ.get("HF_TOKEN")
 
-# ── Also support OPENAI_API_KEY (mentioned in Functional Requirements section) ─
+# -- Also support OPENAI_API_KEY (mentioned in Functional Requirements section) ─
 api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "")
 
-# ── OpenAI Client (mandatory: "Participants must use OpenAI Client") ───────────
+# -- OpenAI Client (mandatory: "Participants must use OpenAI Client") ----------─
 client = OpenAI(api_key=api_key, base_url=API_BASE_URL)
 
 
-# ── Structured logging (openenv validator format) ──────────────────────────────
+# -- Structured logging (openenv validator format) ------------------------------
 def log_start(task, env="", model=""):
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
@@ -53,7 +55,7 @@ REQUIRED_SECTIONS = {
         "Environmental Impact",
         "Out-of-Scope Uses",
     ],
-    "hard": [],  # all 9 sections present — pre-flight does nothing for hard
+    "hard": [],  # all 9 sections present - pre-flight does nothing for hard
 }
 
 FALLBACK_ACTION = json.dumps({
@@ -88,7 +90,7 @@ Strategy:
 2. Flag any section whose content is vague (no specifics, no numbers, no sources)
 3. Use compare_sections to cross-reference:
    - License vs Training Data (license compatibility with base model)
-   - Training Data vs Intended Use (safety gaps — e.g. unfiltered data + serving minors)
+   - Training Data vs Intended Use (safety gaps - e.g. unfiltered data + serving minors)
    - Evaluation Results vs Overview claims (does evidence support stated capabilities?)
    - Bias and Limitations vs Intended Use (is bias coverage adequate for deployment scope?)
 4. Flag cross-section inconsistencies you find
@@ -97,13 +99,13 @@ Strategy:
 CONSERVATIVE FLAGGING RULE:
 Only call flag_inadequate if ALL THREE of these are true:
 1. You can directly quote the specific problematic text from the section
-2. The problem is a factual error, internal contradiction, or concrete missing detail — NOT just vagueness or "could be more detailed"
+2. The problem is a factual error, internal contradiction, or concrete missing detail - NOT just vagueness or "could be more detailed"
 3. You are confident this would fail a formal compliance review
 
 If a section exists and passes these three tests, call flag_compliant and move on.
 Do NOT flag a section as inadequate just because it is brief or general.
 
-HARD EXCLUSION LIST — do NOT flag these sections unless you have direct cross-section evidence of a specific factual conflict:
+HARD EXCLUSION LIST - do NOT flag these sections unless you have direct cross-section evidence of a specific factual conflict:
 - Intended Use: a brief scope statement listing supported tasks and languages is fully acceptable. Do NOT flag for missing risk caveats, out-of-scope disclaimers, or lack of detail.
 - License: a named license (e.g. "Apache 2.0", "MIT", "CC BY 4.0") is complete by itself. Do NOT flag unless compare_sections reveals a concrete incompatibility with another section (e.g. base model license conflict).
 - Overview: summary sections are never compliance targets.
@@ -112,41 +114,41 @@ FINALITY RULE: Once you call flag_compliant on a section, that decision is final
 
 HARD_SYSTEM_PROMPT = """You are an AI governance auditor performing a hard-level model card audit.
 
-This model card LOOKS complete — all sections are present. Your job is to find SUBTLE
+This model card LOOKS complete - all sections are present. Your job is to find SUBTLE
 CROSS-SECTION INCONSISTENCIES that require reading multiple sections together.
 
 CRITICAL RULES FOR TARGET FIELD:
-1. "target" must be EXACTLY ONE section name — never combine two sections.
+1. "target" must be EXACTLY ONE section name - never combine two sections.
    WRONG: "target": "License and Training Data"
    RIGHT: make TWO separate JSON responses, one with "target": "License",
           then another with "target": "Training Data"
 2. Use the EXACT section name as it appears in sections_available.
    The valid section names are listed in every observation you receive.
-   Copy the name character-for-character — do not paraphrase or rename.
+   Copy the name character-for-character - do not paraphrase or rename.
 3. For each compare_sections result that reveals an inconsistency,
-   flag the section that CONTAINS the false or misleading claim —
+   flag the section that CONTAINS the false or misleading claim -
    that is the target for flag_inadequate.
 
 There are exactly 5 violations hidden in this model card. All are flag_inadequate.
 To find them, you MUST use compare_sections on these specific pairs:
   1. compare_sections("License", "Training Procedure")
-     → Look for: is the stated license compatible with the base model's actual license?
+     -> Look for: is the stated license compatible with the base model's actual license?
   2. compare_sections("Training Data", "Intended Use")
-     → Look for: does the training data pose safety risks for the stated deployment audience?
+     -> Look for: does the training data pose safety risks for the stated deployment audience?
   3. compare_sections("Evaluation Results", "Overview")
-     → Look for: do the evaluation metrics actually prove the capability claims?
+     -> Look for: do the evaluation metrics actually prove the capability claims?
   4. compare_sections("Bias and Limitations", "Intended Use")
-     → Look for: does the bias testing coverage match the deployment scope claimed?
+     -> Look for: does the bias testing coverage match the deployment scope claimed?
   5. Read "Environmental Impact" alone
-     → Look for: verify the CO₂ figure by checking: GPU_hours × power_kW × carbon_intensity
+     -> Look for: verify the CO2 figure by checking: GPU_hours x power_kW x carbon_intensity
         (a correct calculation typically yields a number different from what is stated)
 
 Strategy:
   Step 1: Read all sections to build context
   Step 2: compare_sections for each of the 4 pairs above
-  Step 3: flag_inadequate for each inconsistency found — include exact evidence quotes
+  Step 3: flag_inadequate for each inconsistency found - include exact evidence quotes
   Step 3b. For each violation found via compare_sections, submit ONE flag_inadequate
-      per section — not a combined action. If a comparison reveals issues in
+      per section - not a combined action. If a comparison reveals issues in
       both sections, make two separate flag_inadequate calls.
   Step 4: submit_audit when all sections reviewed
 
@@ -155,7 +157,7 @@ At every step, respond with ONLY a valid JSON object (no markdown, no explanatio
     "action_type": "read_section|compare_sections|flag_inadequate|flag_compliant|submit_audit",
     "target": "<section name, or 'final' for submit>",
     "secondary_target": "<second section for compare_sections, else null>",
-    "reason": "<specific inconsistency — be precise>",
+    "reason": "<specific inconsistency - be precise>",
     "severity": "low|medium|high|critical",
     "evidence": "<exact quote from the model card that proves the violation>"
 }"""
@@ -194,7 +196,7 @@ def run_task(task_id: str, env_url: str) -> float:
 
 
 def _run_task_inner(env, task_id: str, step_counter: int) -> float:
-    """Inner implementation — called by run_task after [START] is printed."""
+    """Inner implementation - called by run_task after [START] is printed."""
     reset_result = env.reset(task_id=task_id)
     # EnvClient.reset() returns a StepResult; extract the observation
     observation = getattr(reset_result, "observation", reset_result)
@@ -208,7 +210,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
     print(f"TASK: {task_id.upper()}")
     print(f"{'='*60}")
 
-    # ── Pre-flight: flag required sections absent from this model card ─────────
+    # -- Pre-flight: flag required sections absent from this model card --------─
     available_lower = {s.lower().strip() for s in observation.sections_available}
     for required_section in REQUIRED_SECTIONS.get(task_id, []):
         if required_section.lower().strip() not in available_lower:
@@ -244,7 +246,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
                 final_score = observation.partial_score
                 log_end(success=final_score >= 0.5, steps=step_counter, score=final_score, rewards=rewards_list)
                 return final_score
-    # ── End pre-flight ─────────────────────────────────────────────────────────
+    # -- End pre-flight --------------------------------------------------------─
 
     # Easy task: every ground truth issue is flag_missing, all handled above.
     # Skip the LLM loop entirely to avoid false positives on existing sections.
@@ -290,7 +292,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
                     stream=False,
                 )
                 response_text = completion.choices[0].message.content or ""
-                break  # success — exit retry loop
+                break  # success - exit retry loop
             except Exception as exc:
                 error_str = str(exc)
                 if "429" in error_str or "rate_limit" in error_str.lower():
@@ -395,7 +397,7 @@ def _run_task_inner(env, task_id: str, step_counter: int) -> float:
 
 def main():
     env_url = os.environ.get("ENV_URL", "http://localhost:7860")
-    print(f"Model Card Auditor — Baseline Inference")
+    print(f"Model Card Auditor - Baseline Inference")
     print(f"Model:       {MODEL_NAME}")
     print(f"Endpoint:    {API_BASE_URL}")
     print(f"Environment: {env_url}")
