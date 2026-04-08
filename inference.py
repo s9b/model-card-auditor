@@ -147,7 +147,18 @@ At every step, respond with ONLY a valid JSON object (no markdown, no explanatio
     "reason": "<specific inconsistency - be precise>",
     "severity": "low|medium|high|critical",
     "evidence": "<exact quote from the model card that proves the violation>"
-}"""
+}
+
+MANDATORY WORKFLOW — follow this exact sequence, no skipping:
+1. compare_sections("License", "Training Procedure") → then immediately flag_inadequate("License")
+2. compare_sections("Training Data", "Intended Use") → then immediately flag_inadequate("Training Data")
+3. compare_sections("Evaluation Results", "Overview") → then immediately flag_inadequate("Evaluation Results")
+4. compare_sections("Bias and Limitations", "Intended Use") → then immediately flag_inadequate("Bias and Limitations")
+5. read_section("Environmental Impact") → then immediately flag_inadequate("Environmental Impact")
+6. Only after all 5 flag_inadequate calls are done → submit_audit
+
+Every compare_sections MUST be followed by a flag_inadequate on the FIRST section listed.
+Do not skip any flag_inadequate. Do not submit early. If you submit before step 6, you score 0."""
 
 
 def _get_client():
