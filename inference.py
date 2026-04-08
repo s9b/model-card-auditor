@@ -46,7 +46,7 @@ API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.cerebras.ai/v1")
 MODEL_NAME   = os.environ.get("MODEL_NAME", "qwen-3-235b-a22b-instruct-2507")
 HF_TOKEN     = os.environ.get("HF_TOKEN")
 # Support OPENAI_API_KEY as fallback; use placeholder so OpenAI() never raises
-api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "") or "sk-placeholder"
+api_key = HF_TOKEN or os.environ.get("OPENAI_API_KEY")
 
 # -- Third-party imports (wrapped so a missing package never kills the script) -
 try:
